@@ -325,6 +325,18 @@ def sanitize_fhir_bundle(
                             tel["value"] = "[PHONE]"
                             fentry.identifiers_detected += 1
 
+        elif rtype == "RelatedPerson":
+            res["name"] = [{"text": "[RELATIVE_NAME]"}]
+            fentry.identifiers_detected += 1
+            for tel in res.get("telecom") or []:
+                if isinstance(tel, dict) and "value" in tel:
+                    tel["value"] = "[EMAIL]" if tel.get("system") == "email" else "[PHONE]"
+                    fentry.identifiers_detected += 1
+            for addr in res.get("address") or []:
+                if isinstance(addr, dict) and "line" in addr:
+                    addr["line"] = ["[ADDRESS]"]
+                    fentry.identifiers_detected += 1
+
         elif rtype == "Composition":
             if isinstance(res.get("subject"), dict) and "display" in res["subject"]:
                 res["subject"]["display"] = psn

@@ -78,11 +78,12 @@ def run_zero_leak_audit(
         if path.is_relative_to(san_dir):
             ph_hits = list(_PHONE_10_RE.finditer(norm))
             if ph_hits:
-                # Avoid false positives inside JSON UUIDs or 12+ digit numbers
+                # Avoid false positives inside JSON UUIDs, 12+ digit numbers, or Lot/Batch numbers
                 filtered = [
                     m for m in ph_hits
                     if not (m.start() > 0 and norm[m.start() - 1] in "-0123456789abcdef")
                     and not (m.end() < len(norm) and norm[m.end()] in "-0123456789abcdef")
+                    and not re.search(r"(?i)(?:lot|batch|serial)\s*[#:-]?\s*$", norm[max(0, m.start() - 16):m.start()])
                 ]
                 if filtered:
                     hits += len(filtered)

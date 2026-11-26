@@ -40,7 +40,7 @@ def generalize_pin_value(pin: str, *, high_risk: bool = False) -> str:
 
 
 def _merge_matches(matches: list[PiiMatch]) -> list[PiiMatch]:
-    ordered = sorted(matches, key=lambda m: (m.start, -m.priority, -(m.end - m.start)))
+    ordered = sorted(matches, key=lambda m: (-m.priority, -(m.end - m.start), m.start))
     chosen: list[PiiMatch] = []
     for m in ordered:
         overlap = False
@@ -87,6 +87,38 @@ def redact_free_text(
     norm = normalize_text(text)
     if not norm:
         return norm, 0
+
+    # Fast O(N) chunking for multi-megabyte single-line notes (prevents excessive regex scan overhead)
+    if len(norm) > 80_000:
+        out_chunks: list[str] = []
+        total_det = 0
+        pos = 0
+        n_len = len(norm)
+        while pos < n_len:
+            end = min(n_len, pos + 50_000)
+            if end < n_len:
+                sp = norm.rfind(" ", pos + 40_000, end)
+                if sp != -1:
+                    end = sp + 1
+            chunk_out, c_det = redact_free_text(
+                norm[pos:end],
+                guard,
+                ner,
+                is_address_field=is_address_field,
+                allow_unlabeled_fallback=allow_unlabeled_fallback,
+                extra_terms=extra_terms,
+                known_patient_tokens=known_patient_tokens,
+                shift_days=shift_days,
+                date_hint=date_hint,
+                patient_pseudonym=patient_pseudonym,
+                age_band_width=age_band_width,
+                high_risk=high_risk,
+                generalize_inline_age=generalize_inline_age,
+            )
+            out_chunks.append(chunk_out)
+            total_det += c_det
+            pos = end
+        return "".join(out_chunks), total_det
 
     protected = guard.find_protected_spans(norm, is_address_field=is_address_field)
     matches: list[PiiMatch] = []

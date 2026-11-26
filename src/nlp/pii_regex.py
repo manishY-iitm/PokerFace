@@ -55,7 +55,7 @@ def verhoeff_valid(digits: str) -> bool:
 
 
 # Core identifier patterns
-_ABHA_NUM_RE = re.compile(r"(?<!\d)(?:91[\s-]?)?\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
+_ABHA_NUM_RE = re.compile(r"(?:(?<=^)|(?<=[\s:=(,\"'\[\]]))(?<!\d)(?:91[\s-]?)?\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
 _ABHA_ADDR_RE = re.compile(r"\b[\w.+-]+@(?:abdm|ndhm|sbx)\b", re.I)
 _UPI_RE = re.compile(r"\b[\w.+-]+@(?:upi|okicici|okaxis|oksbi|okhdfcbank|ybl|paytm|ibl|axl|sbi|icici|hdfcbank)\b", re.I)
 _AADHAAR_RE = re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
@@ -76,7 +76,7 @@ _INSURANCE_RE = re.compile(r"\b(?:PMJAY-[A-Z]{2}-\d{6,14}|POL/\d{2,4}/\d{5,12})\
 # Phones: +91/0 mobile, STD landline, tel: URI, anchored phone
 _TEL_URI_RE = re.compile(r"(?i)\btel:([+\d][\d\s.-]{6,15}\d)")
 _PHONE_10_RE = re.compile(
-    r"(?<![\d/.-])(?:\+?91[\s.-]?|0)?([6-9]\d{4}[\s.-]?\d{5}|[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4})(?![\d/.-])"
+    r"(?<![\d/.-])(?:\+?91[\s.-]?|0)?([6-9]\d{4}[\s.-]?\d{5}|[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4})(?![\d/-]|\.\d)"
 )
 _STD_LANDLINE_RE = re.compile(r"(?<![\d/.-])(0\d{2,4}[-\s]\d{6,8})(?![\d/.-])")
 _PHONE_ANCHORED_RE = re.compile(
@@ -89,7 +89,7 @@ _PHONE_MASKED_RE = re.compile(r"\b\d{2}[X*x]{4,6}\d{2,4}\b")
 _MRN_EXPLICIT_RE = re.compile(
     r"\b(?:SNJ/\d{2}/\d{4,8}|JJH-\d{5,9}|DHH\d{4}-\d{4,8}|DHH-IPD-\d{4,8}|"
     r"UHID-\d{4,8}|IPD-\d{4}-\d{4,8}|IP/\d{2}/\d{4,8}|ADM\d{5,9}|"
-    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|[A-Z]{3,6}-[A-Z0-9]{2,10}-\d{4,8})\b",
+    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|[A-Z]{3,6}-[A-Z0-9]{2,10}-\d{2,8})\b",
     re.I,
 )
 _MRN_LABELED_RE = re.compile(
@@ -236,7 +236,7 @@ def detect_regex_pii(
             right = norm[m.end()] if m.end() < len(norm) else " "
             if left.isdigit() or right.isdigit():
                 continue
-            _add(m.start(), m.end(), "PHONE", digs, 85, ignore_protected=True)
+            _add(m.start(), m.end(), "PHONE", digs, 85, ignore_protected=False)
 
     for m in _STD_LANDLINE_RE.finditer(norm):
         if _is_valid_indian_phone(m.group(1)):

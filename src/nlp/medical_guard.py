@@ -53,6 +53,7 @@ _CLINICAL_VALUE_RE = re.compile(
     r"|\b(?:vision|va|pain|gcs)\s*[:=]?\s*\d{1,2}/\d{1,2}\b"
     r"|\b(?:20/20|15/15|120/80)\b"
     r"|\b(?:SNOMED|ICD-?10|LOINC)\s*[:#-]?\s*[A-Z0-9.-]+\b"
+    r"|\b(?:Lot|Batch|Serial)\s*[#:-]?\s*[A-Z0-9-]{6,16}\b"
     r"|\b[A-TV-Z]\d{2}(?:\.\d{1,2})?\b"  # ICD-10 like E27.1, N39.0, J18.9, B54
     r")"
 )

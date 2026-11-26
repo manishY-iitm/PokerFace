@@ -62,6 +62,7 @@ _HINDI_KO_RE = re.compile(
 _HINDI_GRAM_RE = re.compile(r"(?u)(?:ग्राम|गाँव)\s*[:.]?\s*([^\n,|;]{2,40})")
 
 _TITLE_NAME_RE = re.compile(r"\b([A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?(?:\s+[A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?){1,2})\b")
+_UNDERSCORE_NAME_RE = re.compile(r"\b([A-Z][a-z]{1,20}_[A-Z][a-z]{1,20}(?:_[A-Z][a-z]{1,20})?)\b")
 _DEVA_NAME_RE = re.compile(r"([\u0900-\u097f]{2,20}(?:\s+[\u0900-\u097f]{2,20}){1,2})")
 _WHATSAPP_SENDER_RE = re.compile(r"\]\s*([^:\n]{2,40}):")
 _WORD_TOK_RE = re.compile(r"[A-Za-z\u0900-\u097f]{3,}")
@@ -230,8 +231,10 @@ class PiiNer:
             for m in self._known_name_rx.finditer(norm):
                 _add(m.start(), m.end(), "PATIENT_NAME", 74)
 
-        # 14. Unlabeled Title-Case / Devanagari multi-word name fallback (catches unseen canaries)
+        # 14. Unlabeled Title-Case / Devanagari / Underscore-joined multi-word name fallback
         if allow_unlabeled_fallback and not is_address_field:
+            for m in _UNDERSCORE_NAME_RE.finditer(norm):
+                _add(m.start(1), m.end(1), "PATIENT_NAME", 62)
             for m in _TITLE_NAME_RE.finditer(norm):
                 cand = m.group(1)
                 toks = cand.split()

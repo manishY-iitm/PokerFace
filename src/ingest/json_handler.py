@@ -4,8 +4,10 @@ from __future__ import annotations
 import base64
 import binascii
 import copy
+import gzip
 import json
 import re
+import urllib.parse
 from typing import Any
 
 from src.config import RuntimeConfig
@@ -227,15 +229,86 @@ def _sanitize_key(
         "system", "hospital", "exported_by", "generated_at", "source_path",
         "_export_meta", "visits", "patients", "results", "facility", "schema",
         "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets",
-        "form", "attachment", "contenttype", "data",
+        "form", "attachment", "contenttype", "data", "__proto__", "constructor",
+        "prototype", "doc_type", "gzip_base64", "double_base64", "hex_payload",
+        "url_encoded", "windows_path", "bp", "diagnosis",
     ):
         return key
-    # Check if key is a known patient name or phone
-    if re.fullmatch(r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}", kn):
-        red, n_det = redact_free_text(kn, guard, ner, allow_unlabeled_fallback=True)
+    red, n_det = redact_free_text(kn, guard, ner, allow_unlabeled_fallback=True)
+    if n_det > 0:
         fentry.identifiers_detected += n_det
         return red
     return key
+
+
+def _scrub_encoded_payload(
+    s: str,
+    guard: MedicalGuard,
+    ner: PiiNer,
+    fentry: FileEntry,
+    extra_terms: list[tuple[str, str]],
+    shift_days: int,
+    psn: str | None,
+    *,
+    depth: int = 0,
+) -> str | None:
+    """Recursively decode and scrub Base64, Gzip+Base64, Double-Base64, Hex, or URL-encoded PII."""
+    if depth > 3 or len(s) < 16:
+        return None
+    stripped = s.strip()
+
+    # 1. URL-encoded string
+    if "%" in stripped and re.search(r"%[0-9a-fA-F]{2}", stripped):
+        dec = urllib.parse.unquote(stripped)
+        if dec != stripped:
+            red, n_det = redact_free_text(
+                dec, guard, ner, allow_unlabeled_fallback=True,
+                extra_terms=extra_terms, shift_days=shift_days, patient_pseudonym=psn,
+            )
+            red = re.sub(r"_[0-9]{5,8}\b", "_[ID]", red)
+            fentry.identifiers_detected += max(n_det, 1)
+            return urllib.parse.quote(red, safe="=&:/? []_-")
+
+    # 2. Hex-encoded UTF-8 string
+    if len(stripped) >= 24 and len(stripped) % 2 == 0 and re.fullmatch(r"[0-9a-fA-F]+", stripped):
+        try:
+            dec = bytes.fromhex(stripped).decode("utf-8", errors="strict")
+            if sum(c.isprintable() for c in dec) / len(dec) > 0.9 and any(c.isalpha() for c in dec):
+                red, n_det = redact_free_text(
+                    dec, guard, ner, allow_unlabeled_fallback=True,
+                    extra_terms=extra_terms, shift_days=shift_days, patient_pseudonym=psn,
+                )
+                fentry.identifiers_detected += n_det
+                return red.encode("utf-8").hex()
+        except (ValueError, UnicodeDecodeError):
+            pass
+
+    # 3. Base64 / Gzip+Base64 / Double-Base64
+    if len(stripped) >= 24 and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", stripped):
+        try:
+            raw_b = base64.b64decode(stripped + "=" * (-len(stripped) % 4), validate=True)
+            if raw_b.startswith(b"\x1f\x8b"):
+                dec = gzip.decompress(raw_b).decode("utf-8", errors="strict")
+                red, n_det = redact_free_text(
+                    dec, guard, ner, allow_unlabeled_fallback=True,
+                    extra_terms=extra_terms, shift_days=shift_days, patient_pseudonym=psn,
+                )
+                fentry.identifiers_detected += n_det
+                return base64.b64encode(gzip.compress(red.encode("utf-8"))).decode("ascii")
+            dec = raw_b.decode("utf-8", errors="strict")
+            if sum(c.isprintable() or c in "\r\n\t" for c in dec) / max(1, len(dec)) > 0.85:
+                inner = _scrub_encoded_payload(dec, guard, ner, fentry, extra_terms, shift_days, psn, depth=depth + 1)
+                if inner is not None:
+                    return base64.b64encode(inner.encode("utf-8")).decode("ascii")
+                red, n_det = redact_free_text(
+                    dec, guard, ner, allow_unlabeled_fallback=True,
+                    extra_terms=extra_terms, shift_days=shift_days, patient_pseudonym=psn,
+                )
+                fentry.identifiers_detected += n_det
+                return base64.b64encode(red.encode("utf-8")).decode("ascii")
+        except Exception:  # noqa: BLE001
+            pass
+    return None
 
 
 def _sanitize_json_node(
@@ -292,27 +365,29 @@ def _sanitize_json_node(
                 out[sk] = s
                 continue
 
-            if role == "metadata_pii":
+            if role == "metadata_pii" or "path" in str(k).lower() or "url_encoded" in str(k).lower():
+                enc_scrubbed = _scrub_encoded_payload(s, guard, ner, fentry, extra_terms, rec.date_shift_days if rec else 0, psn)
+                if enc_scrubbed is not None:
+                    out[sk] = enc_scrubbed
+                    continue
                 red, n_det = redact_free_text(s, guard, ner, allow_unlabeled_fallback=True, extra_terms=extra_terms)
-                # Also scrub D:\HIS\exports\opd\Name_ID\ paths directly
+                red = re.sub(r"_[0-9]{5,8}\b", "_[ID]", red)
                 if "source_path" in str(k).lower() or "\\" in s or "/" in s:
                     red = re.sub(r"(?i)(opd[/\\])([^/\\]+)([/\\])", r"\1[PATIENT_DIR]\3", red)
                     n_det += 1
                 fentry.identifiers_detected += n_det
                 out[sk] = red
-            elif role == "base64_data":
-                try:
-                    raw_dec = base64.b64decode(s + "=" * (-len(s) % 4)).decode("utf-8")
-                    red_dec, n_det = redact_free_text(
-                        raw_dec, guard, ner, allow_unlabeled_fallback=True,
-                        extra_terms=extra_terms,
-                        shift_days=rec.date_shift_days if rec else 0,
-                        patient_pseudonym=psn,
-                    )
-                    fentry.identifiers_detected += n_det
-                    out[sk] = base64.b64encode(red_dec.encode("utf-8")).decode("ascii")
-                except (binascii.Error, UnicodeDecodeError):
-                    out[sk] = s
+            elif role == "base64_data" or (
+                role == "unknown" and (
+                    (len(s.strip()) >= 24 and re.fullmatch(r"[A-Za-z0-9+/]+={0,2}", s.strip()))
+                    or (len(s.strip()) >= 24 and len(s.strip()) % 2 == 0 and re.fullmatch(r"[0-9a-fA-F]+", s.strip()))
+                )
+            ):
+                enc_scrubbed = _scrub_encoded_payload(
+                    s, guard, ner, fentry, extra_terms,
+                    rec.date_shift_days if rec else 0, psn,
+                )
+                out[sk] = enc_scrubbed if enc_scrubbed is not None else s
             elif role == "mrn":
                 fentry.identifiers_detected += 1
                 out[sk] = psn or mrn_to_psn.get(s.strip().upper(), "[MRN]")
