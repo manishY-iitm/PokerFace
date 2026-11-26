@@ -1,0 +1,49 @@
+{
+  "states": [
+    "uttar pradesh", "up", "bihar", "madhya pradesh", "mp", "rajasthan",
+    "maharashtra", "delhi", "haryana", "punjab", "uttarakhand",
+    "himachal pradesh", "jharkhand", "chhattisgarh", "odisha", "west bengal",
+    "gujarat", "karnataka", "tamil nadu", "kerala", "andhra pradesh",
+    "telangana", "assam", "jammu and kashmir", "goa", "tripura", "manipur",
+    "meghalaya", "mizoram", "nagaland", "sikkim", "arunachal pradesh"
+  ],
+  "districts": [
+    "lucknow", "barabanki", "sitapur", "hardoi", "rae bareli", "raebareli",
+    "sultanpur", "bahraich", "ayodhya", "faizabad", "unnao", "kanpur",
+    "kanpur nagar", "kanpur dehat", "varanasi", "prayagraj", "allahabad",
+    "agra", "aligarh", "meerut", "ghaziabad", "noida", "gautam buddha nagar",
+    "gorakhpur", "bareilly", "moradabad", "saharanpur", "muzaffarnagar",
+    "jhansi", "mathura", "firozabad", "etawah", "mainpuri", "farrukhabad",
+    "kannauj", "shahjahanpur", "lakhimpur kheri", "kheri", "gonda",
+    "basti", "siddharthnagar", "balrampur", "shravasti", "ambedkar nagar",
+    "amethi", "pratapgarh", "kaushambi", "fatehpur", "banda", "chitrakoot",
+    "hamirpur", "mahoba", "jalaun", "lalitpur", "jaunpur", "ghazipur",
+    "chandauli", "mirzapur", "sonbhadra", "bhadohi", "azamgarh", "mau",
+    "ballia", "deoria", "kushinagar", "maharajganj", "bijnor", "amroha",
+    "sambhal", "rampur", "budaun", "pilibhit", "shamli", "baghpat",
+    "hapur", "bulandshahr", "kasganj", "etah", "hathras", "auraiya"
+  ],
+  "district_aliases": {
+    "lucknow": "Lucknow",
+    "lakhnau": "Lucknow",
+    "लखनऊ": "Lucknow",
+    "barabanki": "Barabanki",
+    "बाराबंकी": "Barabanki",
+    "sitapur": "Sitapur",
+    "सीतापुर": "Sitapur",
+    "hardoi": "Hardoi",
+    "हरदोई": "Hardoi",
+    "rae bareli": "Rae Bareli",
+    "raebareli": "Rae Bareli",
+    "रायबरेली": "Rae Bareli",
+    "sultanpur": "Sultanpur",
+    "सुल्तानपुर": "Sultanpur",
+    "bahraich": "Bahraich",
+    "बहराइच": "Bahraich"
+  },
+  "village_suffixes": [
+    "kalan", "khurd", "pur", "pura", "purwa", "ganj", "garh", "nagar",
+    "abad", "dih", "mau", "bazar", "basti", "tola", "patti", "khera",
+    "gaon", "gram", "chowk", "sarai", "bagh"
+  ]
+}

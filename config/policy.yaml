@@ -1,0 +1,44 @@
+# Project RAKSHA Privacy & Linkage Policy
+# Read by src/config.py; overrides via --config or RAKSHAK_POLICY env var.
+
+privacy:
+  k: 5                        # Minimum equivalence-class size for k-anonymity
+  l: 2                        # Minimum distinct sensitive diagnosis categories per class
+  age_band_years: 5           # Initial age generalization width
+  age_band_ladder: [5, 10, 20]
+  pin_ladder: [3, 2, 0]       # Digits preserved in PIN generalization ladder
+  date_shift_min: -365        # Per-patient secret date shift range (non-zero backward shift)
+  date_shift_max: -31
+  pseudonym_prefix: "PSN-"
+  pseudonym_length: 6
+
+linkage:
+  link_threshold: 5.0
+  merge_threshold: 5.0
+  ambiguity_margin: 1.5
+  max_block_size: 200
+  max_age_diff_years: 3
+  weights:
+    exact_gov_id: 12.0
+    exact_mrn: 10.0
+    exact_phone: 4.0
+    exact_dob: 5.0
+    swapped_dob: 3.0
+    exact_name: 4.5
+    fuzzy_name_max: 3.5
+    initial_surname: 2.0
+    guardian_match: 3.0
+    same_pin_city: 1.5
+    same_gender: 1.0
+    compatible_age: 1.0
+    phone_mismatch: -1.0
+    geo_mismatch: -0.5
+
+# Flat fallbacks for simple key: value readers
+k: 5
+l: 2
+min_group_size: 5
+age_band_years: 5
+date_shift_min: -365
+date_shift_max: -31
+date_shift_max_days: 180

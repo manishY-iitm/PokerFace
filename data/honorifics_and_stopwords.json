@@ -1,0 +1,33 @@
+{
+  "honorifics": [
+    "ji", "sahab", "saheb", "didi", "behenji", "bahenji", "bahanji",
+    "bhai", "bhaiya", "babu", "amma", "chacha", "chachu", "mama",
+    "papa", "tau", "kaka", "bua", "mausi", "nana", "nani", "dada", "dadi",
+    "mr", "mrs", "ms", "miss", "shri", "sri", "smt", "shrimati", "kumari",
+    "dr", "prof", "sriman",
+    "जी", "साहब", "साहेब", "दीदी", "बहनजी", "भाई", "भैया", "बाबू",
+    "अम्मा", "चाचा", "चाचू", "मामा", "पापा", "श्री", "श्रीमती", "कुमारी", "डॉ"
+  ],
+  "weak_name_tokens": [
+    "devi", "kumar", "kumari", "md", "mohd", "ji", "sahab", "didi",
+    "behenji", "bhai", "bhaiya", "babu", "amma", "devi", "lal", "ram",
+    "prasad", "chand", "nath", "pal", "das", "देवी", "कुमार", "कुमारी",
+    "जी", "साहब", "दीदी", "बहनजी", "भाई", "भैया", "बाबू", "अम्मा"
+  ],
+  "non_name_words": [
+    "hospital", "multispeciality", "charitable", "clinic", "diagnostics",
+    "pathology", "labs", "lab", "lifeline", "pathkind", "city", "sanjeevani",
+    "jeevan", "jyoti", "arogya", "seva", "sadan", "district", "india",
+    "uttar", "pradesh", "delhi", "helpdesk", "export", "exports", "module",
+    "system", "ehospital", "records", "clerk", "emergency", "ward", "bed",
+    "discharge", "summary", "nursing", "notes", "report", "referral",
+    "letter", "consent", "surgical", "form", "forwarded", "attachment",
+    "billing", "query", "closed", "pending", "approved", "settled",
+    "male", "female", "other", "unknown", "hello", "dear", "please",
+    "thank", "thanks", "sorry", "today", "tomorrow", "yesterday",
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    "january", "february", "march", "april", "may", "june", "july",
+    "august", "september", "october", "november", "december",
+    "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"
+  ]
+}

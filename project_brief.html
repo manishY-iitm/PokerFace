@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Project RAKSHA — Team PokerFace (Project Brief)</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Liberation Sans", "DejaVu Sans", Arial, sans-serif;
+    font-size: 9.2pt;
+    line-height: 1.34;
+    color: #111827;
+    background: #ffffff;
+  }
+  .page {
+    width: 100%;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  .header {
+    border-bottom: 2px solid #0f172a;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .header h1 {
+    font-size: 15pt;
+    color: #0f172a;
+    letter-spacing: -0.2px;
+  }
+  .header .sub {
+    font-size: 8.5pt;
+    color: #334155;
+    margin-top: 2px;
+  }
+  .badge {
+    font-size: 8pt;
+    font-weight: 700;
+    background: #0f172a;
+    color: #ffffff;
+    padding: 3px 8px;
+    border-radius: 3px;
+  }
+
+  h2 {
+    font-size: 10.5pt;
+    color: #0f172a;
+    border-left: 3.5px solid #2563eb;
+    padding-left: 6px;
+    margin: 8px 0 4px 0;
+  }
+  p { margin-bottom: 5px; }
+  ul { margin: 3px 0 6px 16px; }
+  li { margin-bottom: 2.5px; }
+  code {
+    font-family: "Liberation Mono", "DejaVu Sans Mono", monospace;
+    font-size: 8.2pt;
+    background: #f1f5f9;
+    padding: 0.5px 3px;
+    border-radius: 2px;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .card {
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: #f8fafc;
+  }
+  .card h3 {
+    font-size: 9.3pt;
+    color: #1e293b;
+    margin-bottom: 3px;
+  }
+
+  .arch-box {
+    border: 1px solid #94a3b8;
+    background: #f8fafc;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin: 4px 0 6px 0;
+  }
+  .arch-flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .step {
+    border: 1px solid #3b82f6;
+    background: #ffffff;
+    border-radius: 3px;
+    padding: 5px 6px;
+    font-size: 8.3pt;
+  }
+  .step .stitle {
+    font-weight: 700;
+    color: #1d4ed8;
+    font-size: 8.5pt;
+    margin-bottom: 2px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 4px 0 6px 0;
+    font-size: 8.4pt;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 3.5px 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: #0f172a;
+    color: #ffffff;
+    font-weight: 600;
+  }
+  th code {
+    background: #1e293b;
+    color: #f8fafc;
+  }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  .callout {
+    border: 1px solid #bfdbfe;
+    background: #eff6ff;
+    border-radius: 4px;
+    padding: 5px 8px;
+    margin: 5px 0;
+    font-size: 8.7pt;
+  }
+  .footer {
+    margin-top: 6px;
+    border-top: 1px solid #cbd5e1;
+    padding-top: 3px;
+    font-size: 7.8pt;
+    color: #64748b;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== PAGE 1 ==================== -->
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Project RAKSHA — Team PokerFace</h1>
+      <div class="sub">Yugaantar DevForge · Track 3 ("Secret Wards") · Repo: <code>github.com/manishY-iitm/PokerFace</code></div>
+    </div>
+    <div class="badge">OFFLINE · CPU-ONLY · NO LLMs</div>
+  </div>
+
+  <div class="callout">
+    <strong>Pitch:</strong> An offline, deterministic, schema-agnostic privacy firewall for messy Indian healthcare dumps (English, Hindi Devanagari, Hinglish) that eliminates direct &amp; hidden-channel PII (<code>0.0%</code> leaked), links patients across scripts without merging twins or spouses (<code>0%</code> false merges), and cuts voter-list re-identification risk from <code>99.6%</code> to <code>0.4%</code> while keeping clinical utility intact.
+  </div>
+
+  <h2>1. Problem &amp; Threat Model</h2>
+  <p>Hospitals merging heterogeneous exports (UTF-16 TSV, cp1252 CSV, nested JSON, FHIR R4 Bundles, WhatsApp forwards, Hindi notes) leak PII in obvious fields and hidden channels (filenames, CSV headers, JSON keys, metadata paths, Base64 attachments, FHIR <code>text.div</code>/<code>contained</code>). An automated adversary holds a population voter register (Name, Gender, DOB, PIN, City) and known facts (visit dates, rare diagnoses, length of stay [LOS]). Plain regex wrappers fail on Hindi/Hinglish names, destroy medical terms (<em>Dr. Sharma</em>, <em>Parkinson's</em>, <em>Dolo 650</em>, <em>H/o HTN</em>), and cannot stop linkage or global-shift recovery attacks.</p>
+
+  <h2>2. 4-Pass Deterministic Architecture</h2>
+  <div class="arch-box">
+    <div class="arch-flow">
+      <div class="step">
+        <div class="stitle">Pass 1: Ingest &amp; Infer</div>
+        Sorted read-only walk, SHA-256, magic-byte &amp; depth guard (&gt;100), encoding validator, fuzzy + value-sniffed schema inference.
+      </div>
+      <div class="step">
+        <div class="stitle">Pass 2: NLP &amp; Linkage</div>
+        Zero-width index map, schwa-aware Deva&rarr;Latin, <code>MedicalGuard</code> span protection, 5-pass blocking, Fellegi–Sunter + Hard MNL.
+      </div>
+      <div class="step">
+        <div class="stitle">Pass 3: Privacy &amp; Scrub</div>
+        HMAC-SHA256 <code>PSN-XXXXXX</code> &amp; negative shifts <code>[-365,-31]</code>, bottom-up <code>k=5, l=2</code> ladder, cluster-boosted redaction.
+      </div>
+      <div class="step">
+        <div class="stitle">Pass 4: Audit &amp; Export</div>
+        Self-audit scan for secret &amp; stray PII, UTF-8 <code>sanitized/</code>, sorted <code>records.jsonl</code>, cross-checked <code>report.json</code>.
+      </div>
+    </div>
+  </div>
+
+  <h2>3. Multilingual, FHIR Hidden-Place Detection &amp; Medical Protection</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Multilingual &amp; Obfuscated PII (<code>src/nlp/</code>)</h3>
+      <ul>
+        <li><strong>Unicode Index-Mapped Normalizer:</strong> Strips zero-width chars (<code>\u200b</code>, <code>\ufeff</code>), folds Cyrillic/Greek homoglyphs, converts Indic digits (<code>०-९</code> &rarr; <code>0-9</code>), and maps spans back to original offsets.</li>
+        <li><strong>Schwa-Aware Transliteration:</strong> Maps Devanagari names (<code>राजेश शर्मा</code> &rarr; <code>rajesh sharma</code>), strips honorifics, collapses Indian phonetic variants (<code>v&harr;w, ee&harr;i, oo&harr;u, ph&harr;f, sh&harr;s</code>), and parses North/South initials (<code>R. K. Sharma</code>).</li>
+        <li><strong>Identifiers &amp; Canaries:</strong> Verhoeff-validated &amp; labeled Aadhaar, ABHA (14-digit), PAN, EPIC, DL, Passport, IFSC, UPI, mobile/STD via offline <code>phonenumbers</code>, addresses/PINs, and EN/HI/Hinglish relation anchors (<code>S/o, W/o, पुत्र, पत्नी</code>).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Medical Protection &amp; FHIR R4 (<code>medical_guard.py</code>, <code>fhir_handler.py</code>)</h3>
+      <ul>
+        <li><strong>Pre-Redaction Span Guard:</strong> Protects clinicians (<code>Dr.</code>, <code>डॉ.</code>, <code>Consultant</code>), 270+ medical eponyms (<em>Parkinson's</em>, <em>Foley</em>, <em>Ringer's</em>, <em>Widal</em>), 200+ Indian drugs (<em>Dolo</em>, <em>Glycomet</em>, <em>Pan-D</em>), dosages (<code>1-0-1</code>, <code>500mg BD</code>), vitals (<code>120/80</code>, <code>20/20</code>, <code>15/15</code>), SNOMED/ICD-10/LOINC codes, and <code>H/o</code> history (never confused with <em>Husband of</em>).</li>
+        <li><strong>Deep FHIR R4 Scrubbing:</strong> Cleans <code>Patient</code> fields, <code>text.div</code> XHTML narratives, <code>Reference.display</code>, <code>contained[]</code>, non-UUID <code>fullUrl</code>, <code>extension[]</code>, <code>photo</code>, <code>note[].text</code>, and Base64 <code>DocumentReference.attachment.data</code> while keeping 100% reference resolution and valid R4 date syntax.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>4. Schema-Agnostic Field Classifier &amp; Fail-Safe Quarantine</h2>
+  <p><strong>Zero Hardcoding (<code>schema_infer.py</code> + <code>router.py</code>):</strong> Combines fuzzy EN/HI/Hinglish header matching (handling unseen keys like <code>rogi_ka_naam</code>, <code>janam_tithi</code>, <code>sampark_sankhya</code>) with row/object value-distribution sniffing (detecting PAN, Aadhaar, ABHA, phone, PIN, dates inside opaque columns like <code>col_x</code>). Unsupported binaries (<code>%PDF-</code>, PNG, JPEG, XML), empty files, mislabeled JSON-in-CSV, corrupt cp1252/UTF-8 bytes, and &gt;100-deep JSON are quarantined (<code>"output": null</code>) with generic non-PII reason codes; raw bytes are never copied.</p>
+
+  <div class="footer">
+    <span>Team PokerFace · Project RAKSHA</span>
+    <span>Page 1 of 2</span>
+  </div>
+</div>
+
+<!-- ==================== PAGE 2 ==================== -->
+<div class="page">
+  <div class="header">
+    <div>
+      <h1>Linkage, Privacy Guarantees &amp; Quantitative Benchmarks</h1>
+      <div class="sub">Zero-LLM, Deterministic, Offline CPU Architecture · Verified on Dev &amp; 500-Patient Red-Team Chaos Suite</div>
+    </div>
+    <div class="badge">PAGE 2 · EVALUATION</div>
+  </div>
+
+  <h2>5. Constrained Cross-Script Record Linkage (<code>src/linkage/</code>)</h2>
+  <ul>
+    <li><strong>5-Pass Deterministic Blocking (<code>O(N&middot;B)</code>):</strong> Blocks on (1) Gov IDs/MRNs, (2) 10-digit phones, (3) <code>(DOB, gender)</code> + DD/MM swap, (4) <code>(phonetic_last, first_initial, gender)</code>, and (5) <code>(phonetic_first, age_5yr, gender)</code>, capping pathological placeholder blocks (<code>9999999999</code>) to bound runtime &amp; memory.</li>
+    <li><strong>Fellegi–Sunter Scorer + Hard Must-Not-Link (MNL):</strong> Immediately blocks merging on gender conflict, age difference &gt;3 yrs, non-swapped DOB conflict, distinct verified Gov IDs (unless 1-char typo + strong name/DOB/phone match), or <strong>incompatible given names</strong> (preventing spouses and twins sharing phones/addresses from ever merging), while linking <code>R. K. Sharma</code> &harr; <code>Rajesh Kumar Sharma</code> &harr; <code>राजेश शर्मा</code>.</li>
+    <li><strong>Conflict-Free Clustering &amp; Ambiguity Holdout:</strong> Agglomerative merges require zero MNL conflicts across all member pairs (stopping A–B–C transitive chaining). Weak records lacking verified Gov IDs/MRNs that tie across conflicting clusters within <code>ambiguity_margin=1.5</code> stay unlinked (<code>"patient": null</code>).</li>
+    <li><strong>Cluster-Boosted Redaction:</strong> Linked cluster tokens (EN/HI names, relatives, MRNs) feed back into Pass 3 free-text scrubbing while strictly honoring <code>MedicalGuard</code> (preserving <code>Dr. A. K. Sharma</code> even when the patient's surname is <em>Sharma</em>).</li>
+  </ul>
+
+  <h2>6. Privacy Guarantees, Security &amp; Utility Preservation (<code>src/crypto.py</code>, <code>src/privacy/</code>)</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h3>Keyed Crypto &amp; Temporal Integrity</h3>
+      <ul>
+        <li><code>make_pseudonym</code>: <code>HMAC-SHA256(RAKSHA_SECRET, cluster_key)</code> &rarr; collision-checked <code>PSN-XXXXXX</code>, embedded inside every linked record.</li>
+        <li><code>make_date_shift</code>: Per-cluster negative shift in <code>[-365, -31]</code> (defeats Attack B global-shift recovery while preserving <strong>100% exact LOS</strong> and inter-visit intervals).</li>
+        <li>DOB is converted to a truthful age band before shifting (never shifted into a fake birth date).</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Adaptive k-Anonymity (<code>k=5</code>) &amp; l-Diversity (<code>l=2</code>)</h3>
+      <ul>
+        <li>Iterative bottom-up generalization along Age (<code>5 &rarr; 10 &rarr; 20 &rarr; *</code>) and Geo PIN hierarchy (<code>PIN-3 &rarr; PIN-2 &rarr; State &rarr; Region &rarr; *</code> via <code>indian_pin_hierarchy.json</code>).</li>
+        <li>Rare-disease &amp; elderly (<code>&ge;85</code>) outliers generalize automatically; extreme outliers suppress QIs without altering clinical values or CSV row indices.</li>
+        <li><strong>Self-Audit &amp; Security:</strong> In-memory processing only; <code>audit.py</code> scans all outputs for <code>RAKSHA_SECRET</code> and stray direct PII before exit.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>7. Quantitative Benchmark Results</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Evaluation Dimension</th>
+        <th>Practice Dataset (<code>dev/input</code>: 200 files, 816 recs)</th>
+        <th>Red-Team Chaos Suite (500 pts, ~1,915 recs, Unseen Schema)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Personal Data &amp; Canary Leaks</strong></td>
+        <td><strong>0 / 3,230 (0.0%)</strong> across EN/HI/Hinglish &amp; all 6 channels; <strong>0 / 4 canaries</strong></td>
+        <td><strong>0 leaks</strong> (canaries, Base64, FHIR <code>text.div</code>/<code>contact</code>/<code>contained</code>, logs)</td>
+      </tr>
+      <tr>
+        <td><strong>Adversarial Re-Identification Risk</strong></td>
+        <td>All rare/elderly traps generalized (<code>80+</code>, State/Region)</td>
+        <td>Voter-list Re-ID: <strong>99.6% &rarr; 0.4%</strong>; Known-date hits: <strong>2/150</strong>; Singling-out: <strong>0</strong></td>
+      </tr>
+      <tr>
+        <td><strong>Cross-Script Linkage Quality</strong></td>
+        <td>Precision <strong>1.00</strong>, Recall <strong>0.95</strong>, F0.5 <strong>0.99</strong>, <strong>0 wrong merges</strong></td>
+        <td><strong>0.0% false merges</strong> (spouses/twins/homonyms separated); <strong>&gt;90%</strong> recall</td>
+      </tr>
+      <tr>
+        <td><strong>Clinical Utility Preservation</strong></td>
+        <td><strong>4,847 / 4,855 (99.8%)</strong> medical values kept; <strong>100% exact LOS</strong></td>
+        <td><strong>100%</strong> doctors, eponyms, drugs, vitals, <code>H/o HTN</code>, SNOMED, LOS &amp; age bands</td>
+      </tr>
+      <tr>
+        <td><strong>Format Integrity &amp; Quarantine</strong></td>
+        <td><code>CONTRACT OK</code>; <strong>0</strong> raw copies; <strong>8/8</strong> broken files quarantined</td>
+        <td><code>100%</code> valid CSV/TSV/JSON/FHIR R4; <strong>5/5</strong> trap files quarantined; input untouched</td>
+      </tr>
+      <tr>
+        <td><strong>Determinism, Speed &amp; Memory</strong></td>
+        <td><strong>2.64s</strong>, <strong>41.2 MB</strong> peak RSS; <code>READY TO SUBMIT</code></td>
+        <td><strong>14/14</strong> tests pass in <strong>23.20s</strong> (3 runs + attacker); 100% secret rotation</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>8. Model Declaration &amp; Honest Limitations</h2>
+  <p><strong>Declared Stack (Zero LLMs / Zero Transformers &gt;50M):</strong> Python 3.10+ stdlib, <code>rapidfuzz</code>, <code>regex</code>, <code>phonenumbers</code>, optional <code>PyYAML</code>, and bundled offline gazetteers in <code>data/</code>. <strong>Limitations:</strong> Binary PDFs/images and HL7 XML are safely quarantined without OCR; ambiguous standalone notes whose initials and shared family phone tie across identical twins stay unlinked (<code>null</code>) to guarantee <code>0%</code> false merges.</p>
+
+  <div class="footer">
+    <span>Team PokerFace · Project RAKSHA (Track 3: Secret Wards)</span>
+    <span>Page 2 of 2</span>
+  </div>
+</div>
+
+</body>
+</html>

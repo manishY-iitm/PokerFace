@@ -1,0 +1,479 @@
+"""JSON ingestion and sanitization handler (OPD, registration JSON, labs, misc)."""
+from __future__ import annotations
+
+import base64
+import binascii
+import copy
+import json
+import re
+from typing import Any
+
+from src.config import RuntimeConfig
+from src.ingest.csv_handler import _parse_age_sex, _parse_gender
+from src.ingest.schema_infer import classify_field_name
+from src.models import FileEntry, PatientRecord
+from src.nlp.date_shifter import parse_date_safe, shift_date_str
+from src.nlp.indic_norm import normalize_text
+from src.nlp.medical_guard import MedicalGuard
+from src.nlp.pii_ner import PiiNer
+from src.nlp.pii_regex import _MRN_EXPLICIT_RE
+from src.nlp.redactor import generalize_age_value, generalize_pin_value, redact_free_text
+
+
+def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> None:
+    if isinstance(obj, dict):
+        first_p = ""
+        last_p = ""
+        for k, v in obj.items():
+            role = classify_field_name(str(k), parent_key)
+            if isinstance(v, (dict, list)):
+                _extract_from_obj(v, rec, parent_key=str(k).lower())
+                continue
+            if v is None:
+                continue
+            s = normalize_text(str(v)).strip()
+            if not s:
+                continue
+            if role == "mrn":
+                rec.all_mrns.append(s.upper())
+                rec.gov_ids.setdefault("mrn", s.upper())
+            elif role == "first_name":
+                first_p = s
+            elif role == "last_name":
+                last_p = s
+            elif role == "patient_name":
+                rec.names_raw.append(s)
+            elif role == "relative_name":
+                clean_rel = re.sub(r"(?i)^(?:s/o|d/o|w/o|c/o)\s*", "", s).strip()
+                if clean_rel:
+                    rec.guardian_names_raw.append(clean_rel)
+            elif role == "phone":
+                digs = re.sub(r"\D", "", s)
+                if len(digs) >= 8:
+                    rec.phones.append(digs)
+            elif role == "email" and "@" in s:
+                rec.emails.append(s.lower())
+            elif role == "aadhaar":
+                digs = re.sub(r"\D", "", s)
+                if len(digs) == 12:
+                    rec.gov_ids["aadhaar"] = digs
+            elif role == "abha":
+                digs = re.sub(r"\D", "", s)
+                if len(digs) == 14:
+                    rec.gov_ids["abha"] = digs
+            elif role == "abha_address" and "@" in s:
+                rec.gov_ids["abha_address"] = s.lower()
+            elif role == "pan":
+                rec.gov_ids["pan"] = s.upper()
+            elif role == "gender":
+                rec.gender = _parse_gender(s)
+            elif role == "age":
+                av, _ = _parse_age_sex(s)
+                if av is not None:
+                    rec.reported_age = av
+            elif role == "age_sex":
+                av, gv = _parse_age_sex(s)
+                if av is not None:
+                    rec.reported_age = av
+                if gv:
+                    rec.gender = gv
+            elif role == "dob":
+                d = parse_date_safe(s, hint=rec.date_hint)
+                if d:
+                    rec.dob = d
+            elif role == "village":
+                rec.village = s
+            elif role == "tehsil":
+                rec.tehsil = s
+            elif role == "district":
+                rec.district = s
+            elif role == "pin":
+                digs = re.sub(r"\D", "", s)
+                if len(digs) == 6:
+                    rec.pin_code = digs
+            elif role == "address":
+                rec.address_raw = s
+            elif role == "clinical_date":
+                d = parse_date_safe(s, hint=rec.date_hint)
+                if d:
+                    rec.clinical_dates.append(d)
+                    if rec.reference_date is None:
+                        rec.reference_date = d
+            elif role == "medical_preserve" and str(k).lower() in ("display", "procedure", "diagnosis"):
+                rec.diagnoses.append(s)
+        if first_p or last_p:
+            full = f"{first_p} {last_p}".strip()
+            if full:
+                rec.names_raw.insert(0, full)
+    elif isinstance(obj, list):
+        for item in obj:
+            _extract_from_obj(item, rec, parent_key=parent_key)
+
+
+def _find_record_container(data: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
+    for k, v in data.items():
+        if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            # Non-patient sub-arrays (panels in diagnostic reports, wards in census, tickets)
+            if k.lower() in ("wards", "panels", "rx", "diagnosis", "tickets"):
+                return None
+            return k, v
+    return None
+
+
+def parse_json_file(
+    rel_path: str,
+    text: str,
+    sha256: str,
+    encoding: str,
+    has_bom: bool,
+) -> FileEntry:
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+        raise ValueError("invalid_json") from exc
+
+    is_clean = rel_path.startswith("clean/")
+    is_meta_index = rel_path.endswith("patient_index.json") or rel_path.endswith("helpdesk_tickets.json") or rel_path.endswith("scanned_consent_form.json")
+
+    records: list[PatientRecord] = []
+    if isinstance(data, list):
+        for i, item in enumerate(data):
+            loc = f"/{i}"
+            rec = PatientRecord(
+                record_uid=f"{rel_path}::{loc}",
+                rel_input_path=rel_path,
+                rel_output_path=rel_path,
+                file_type="json",
+                loc=loc,
+                raw_payload=item,
+                has_patient_signal=(not is_clean and isinstance(item, dict)),
+            )
+            if isinstance(item, dict) and rec.has_patient_signal:
+                _extract_from_obj(item, rec)
+            records.append(rec)
+        return FileEntry(
+            rel_input_path=rel_path,
+            rel_output_path=rel_path,
+            input_sha256=sha256,
+            status="sanitized",
+            file_type="json",
+            encoding=encoding,
+            has_bom=has_bom,
+            records=records,
+            raw_data=data,
+        )
+
+    container = _find_record_container(data) if isinstance(data, dict) and not rel_path.endswith("helpdesk_tickets.json") else None
+
+    if container is None:
+        loc = "doc"
+        rec = PatientRecord(
+            record_uid=f"{rel_path}::{loc}",
+            rel_input_path=rel_path,
+            rel_output_path=rel_path,
+            file_type="json",
+            loc=loc,
+            raw_payload=data,
+            has_patient_signal=(not is_clean and not is_meta_index),
+        )
+        if isinstance(data, dict) and rec.has_patient_signal:
+            _extract_from_obj(data, rec)
+        records.append(rec)
+    else:
+        key_name, items = container
+        pointer_key = key_name.replace("~", "~0").replace("/", "~1")
+        for i, item in enumerate(items):
+            loc = f"/{pointer_key}/{i}"
+            rec = PatientRecord(
+                record_uid=f"{rel_path}::{loc}",
+                rel_input_path=rel_path,
+                rel_output_path=rel_path,
+                file_type="json",
+                loc=loc,
+                raw_payload=item,
+                has_patient_signal=not is_clean,
+            )
+            if not is_clean:
+                _extract_from_obj(item, rec)
+            records.append(rec)
+
+    return FileEntry(
+        rel_input_path=rel_path,
+        rel_output_path=rel_path,
+        input_sha256=sha256,
+        status="sanitized",
+        file_type="json",
+        encoding=encoding,
+        has_bom=has_bom,
+        records=records,
+        raw_data=data,
+    )
+
+
+def _sanitize_key(
+    key: str,
+    guard: MedicalGuard,
+    ner: PiiNer,
+    mrn_to_psn: dict[str, str],
+    fentry: FileEntry,
+) -> str:
+    kn = normalize_text(key)
+    m = _MRN_EXPLICIT_RE.search(kn)
+    if m:
+        fentry.identifiers_detected += 1
+        return mrn_to_psn.get(m.group(0).upper(), "[MRN]")
+    # Only scrub key if it looks like a person name / phone / PII (never scrub clinical/schema keys)
+    if kn.lower() in (
+        "system", "hospital", "exported_by", "generated_at", "source_path",
+        "_export_meta", "visits", "patients", "results", "facility", "schema",
+        "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets",
+        "form", "attachment", "contenttype", "data",
+    ):
+        return key
+    # Check if key is a known patient name or phone
+    if re.fullmatch(r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2}", kn):
+        red, n_det = redact_free_text(kn, guard, ner, allow_unlabeled_fallback=True)
+        fentry.identifiers_detected += n_det
+        return red
+    return key
+
+
+def _sanitize_json_node(
+    node: Any,
+    rec: PatientRecord | None,
+    parent_key: str,
+    cfg: RuntimeConfig,
+    guard: MedicalGuard,
+    ner: PiiNer,
+    mrn_to_psn: dict[str, str],
+    fentry: FileEntry,
+    extra_terms: list[tuple[str, str]],
+) -> Any:
+    if isinstance(node, dict):
+        out: dict[str, Any] = {}
+        psn = rec.pseudonym if rec else None
+        for k, v in node.items():
+            sk = _sanitize_key(str(k), guard, ner, mrn_to_psn, fentry)
+            role = classify_field_name(str(k), parent_key)
+
+            if isinstance(v, (dict, list)):
+                out[sk] = _sanitize_json_node(
+                    v, rec, str(k).lower(), cfg, guard, ner, mrn_to_psn, fentry, extra_terms
+                )
+                continue
+
+            if v is None or isinstance(v, bool):
+                out[sk] = v
+                continue
+
+            # Numeric handling (e.g. Aadhaar stored as int under aadhar_no, or age int)
+            if isinstance(v, (int, float)):
+                if role == "aadhaar":
+                    fentry.identifiers_detected += 1
+                    out[sk] = "[AADHAAR]"
+                elif role == "abha":
+                    fentry.identifiers_detected += 1
+                    out[sk] = "[ABHA_NUMBER]"
+                elif role == "phone":
+                    fentry.identifiers_detected += 1
+                    out[sk] = "[PHONE]"
+                elif role == "age" and isinstance(v, int):
+                    out[sk] = (rec.age_band if rec and rec.age_band else generalize_age_value(v, cfg.age_band_years, high_risk=bool(rec and rec.is_rare_risk)))
+                elif role == "pin":
+                    fentry.identifiers_detected += 1
+                    out[sk] = generalize_pin_value(str(int(v)), high_risk=bool(rec and rec.is_rare_risk))
+                else:
+                    out[sk] = v
+                continue
+
+            # String handling
+            s = normalize_text(str(v))
+            if not s.strip():
+                out[sk] = s
+                continue
+
+            if role == "metadata_pii":
+                red, n_det = redact_free_text(s, guard, ner, allow_unlabeled_fallback=True, extra_terms=extra_terms)
+                # Also scrub D:\HIS\exports\opd\Name_ID\ paths directly
+                if "source_path" in str(k).lower() or "\\" in s or "/" in s:
+                    red = re.sub(r"(?i)(opd[/\\])([^/\\]+)([/\\])", r"\1[PATIENT_DIR]\3", red)
+                    n_det += 1
+                fentry.identifiers_detected += n_det
+                out[sk] = red
+            elif role == "base64_data":
+                try:
+                    raw_dec = base64.b64decode(s + "=" * (-len(s) % 4)).decode("utf-8")
+                    red_dec, n_det = redact_free_text(
+                        raw_dec, guard, ner, allow_unlabeled_fallback=True,
+                        extra_terms=extra_terms,
+                        shift_days=rec.date_shift_days if rec else 0,
+                        patient_pseudonym=psn,
+                    )
+                    fentry.identifiers_detected += n_det
+                    out[sk] = base64.b64encode(red_dec.encode("utf-8")).decode("ascii")
+                except (binascii.Error, UnicodeDecodeError):
+                    out[sk] = s
+            elif role == "mrn":
+                fentry.identifiers_detected += 1
+                out[sk] = psn or mrn_to_psn.get(s.strip().upper(), "[MRN]")
+            elif role in ("patient_name", "first_name", "last_name"):
+                fentry.identifiers_detected += 1
+                out[sk] = "[PATIENT_NAME]" if role != "patient_name" or (rec and rec.all_mrns) else (psn or "[PATIENT_NAME]")
+            elif role == "relative_name":
+                fentry.identifiers_detected += 1
+                out[sk] = "[RELATIVE_NAME]"
+            elif role == "phone":
+                fentry.identifiers_detected += 1
+                out[sk] = "[PHONE]"
+            elif role == "email":
+                fentry.identifiers_detected += 1
+                out[sk] = "[EMAIL]"
+            elif role == "aadhaar":
+                fentry.identifiers_detected += 1
+                out[sk] = "[AADHAAR]"
+            elif role == "abha":
+                fentry.identifiers_detected += 1
+                out[sk] = "[ABHA_NUMBER]"
+            elif role == "abha_address":
+                fentry.identifiers_detected += 1
+                out[sk] = "[ABHA_ADDRESS]"
+            elif role == "pan":
+                fentry.identifiers_detected += 1
+                out[sk] = "[PAN]"
+            elif role == "dob":
+                fentry.identifiers_detected += 1
+                if rec and rec.age_band:
+                    out[sk] = rec.age_band
+                elif rec and rec.dob:
+                    ref_y = rec.reference_date.year if rec.reference_date else 2026
+                    out[sk] = generalize_age_value(max(0, ref_y - rec.dob.year), cfg.age_band_years, high_risk=rec.is_rare_risk)
+                else:
+                    out[sk] = "[DOB]"
+            elif role == "age":
+                av, _ = _parse_age_sex(s)
+                if av is not None:
+                    out[sk] = rec.age_band if rec and rec.age_band else generalize_age_value(av, cfg.age_band_years, high_risk=bool(rec and rec.is_rare_risk))
+                else:
+                    out[sk] = s
+            elif role == "age_sex":
+                av, gv = _parse_age_sex(s)
+                if av is not None:
+                    band = rec.age_band if rec and rec.age_band else generalize_age_value(av, cfg.age_band_years, high_risk=bool(rec and rec.is_rare_risk))
+                    out[sk] = f"{band}/{gv}" if gv else band
+                else:
+                    out[sk] = s
+            elif role == "pin":
+                fentry.identifiers_detected += 1
+                out[sk] = (rec.extra.get("pin_generalized") if rec else None) or generalize_pin_value(s, high_risk=bool(rec and rec.is_rare_risk))
+            elif role in ("village", "tehsil"):
+                fentry.identifiers_detected += 1
+                if rec and rec.was_suppressed:
+                    out[sk] = "SUPPRESSED"
+                elif rec and rec.is_rare_risk and rec.geo_generalized:
+                    out[sk] = rec.geo_generalized
+                else:
+                    out[sk] = (rec.district if rec and rec.district else (rec.geo_generalized if rec and rec.geo_generalized else "[VILLAGE]"))
+            elif role == "district":
+                if rec and rec.was_suppressed:
+                    out[sk] = "SUPPRESSED"
+                else:
+                    out[sk] = (rec.geo_generalized if rec and rec.is_rare_risk and rec.geo_generalized else s)
+            elif role == "address":
+                red, n_det = redact_free_text(
+                    s, guard, ner, is_address_field=True, allow_unlabeled_fallback=False,
+                    extra_terms=extra_terms, high_risk=bool(rec and rec.is_rare_risk),
+                )
+                fentry.identifiers_detected += n_det
+                out[sk] = red
+            elif role == "clinical_date":
+                shift = rec.date_shift_days if rec else 0
+                out[sk] = shift_date_str(s, shift, hint=rec.date_hint if rec else "dmy")
+            elif role == "doctor":
+                out[sk] = s
+            elif role == "medical_preserve":
+                out[sk] = s
+            else:
+                # Could be value inside by_name (e.g., "Zainab Siddiqui": "JJH-0077112")
+                if _MRN_EXPLICIT_RE.fullmatch(s.strip()):
+                    fentry.identifiers_detected += 1
+                    out[sk] = mrn_to_psn.get(s.strip().upper(), "[MRN]")
+                else:
+                    red, n_det = redact_free_text(
+                        s, guard, ner, allow_unlabeled_fallback=True,
+                        extra_terms=extra_terms,
+                        known_patient_tokens=rec.extra.get("cluster_tokens") if rec else None,
+                        shift_days=rec.date_shift_days if rec else 0,
+                        date_hint=rec.date_hint if rec else "dmy",
+                        patient_pseudonym=None,
+                        age_band_width=cfg.age_band_years,
+                        high_risk=bool(rec and rec.is_rare_risk),
+                    )
+                    fentry.identifiers_detected += n_det
+                    out[sk] = red
+        return out
+
+    if isinstance(node, list):
+        return [
+            _sanitize_json_node(x, rec, parent_key, cfg, guard, ner, mrn_to_psn, fentry, extra_terms)
+            for x in node
+        ]
+    return node
+
+
+def sanitize_json_file(
+    fentry: FileEntry,
+    cfg: RuntimeConfig,
+    guard: MedicalGuard,
+    ner: PiiNer,
+    mrn_to_psn: dict[str, str],
+) -> str:
+    if fentry.rel_input_path.startswith("clean/"):
+        return json.dumps(fentry.raw_data, ensure_ascii=False, indent=2) + "\n"
+
+    data = copy.deepcopy(fentry.raw_data)
+    if isinstance(data, list):
+        san_root = []
+        for idx, item in enumerate(data):
+            rec = fentry.records[idx] if idx < len(fentry.records) else None
+            extra = []
+            if rec:
+                extra = [(nm, "PATIENT_NAME") for nm in rec.names_raw] + [(gn, "RELATIVE_NAME") for gn in rec.guardian_names_raw]
+                if rec.village:
+                    extra.append((rec.village, "VILLAGE"))
+            san_root.append(_sanitize_json_node(item, rec, "", cfg, guard, ner, mrn_to_psn, fentry, extra))
+        return json.dumps(san_root, ensure_ascii=False, indent=2) + "\n"
+
+    if len(fentry.records) == 1 and fentry.records[0].loc == "doc":
+        rec = fentry.records[0]
+        extra = [(nm, "PATIENT_NAME") for nm in rec.names_raw] + [(gn, "RELATIVE_NAME") for gn in rec.guardian_names_raw]
+        if rec.village:
+            extra.append((rec.village, "VILLAGE"))
+        sanitized = _sanitize_json_node(data, rec, "", cfg, guard, ner, mrn_to_psn, fentry, extra)
+        return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n"
+
+    # Multi-record container JSON (e.g. visits, patients, results)
+    container = _find_record_container(data)
+    if container is None:
+        sanitized = _sanitize_json_node(data, None, "", cfg, guard, ner, mrn_to_psn, fentry, [])
+        return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n"
+
+    container_key, _ = container
+    sanitized_top: dict[str, Any] = {}
+    for k, v in data.items():
+        if k == container_key and isinstance(v, list):
+            san_list = []
+            for idx, item in enumerate(v):
+                rec = fentry.records[idx] if idx < len(fentry.records) else None
+                extra = []
+                if rec:
+                    extra = [(nm, "PATIENT_NAME") for nm in rec.names_raw] + [(gn, "RELATIVE_NAME") for gn in rec.guardian_names_raw]
+                    if rec.village:
+                        extra.append((rec.village, "VILLAGE"))
+                san_list.append(
+                    _sanitize_json_node(item, rec, k.lower(), cfg, guard, ner, mrn_to_psn, fentry, extra)
+                )
+            sanitized_top[k] = san_list
+        else:
+            sanitized_top[k] = _sanitize_json_node(v, None, k.lower(), cfg, guard, ner, mrn_to_psn, fentry, [])
+
+    return json.dumps(sanitized_top, ensure_ascii=False, indent=2) + "\n"
