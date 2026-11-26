@@ -1,6 +1,8 @@
 """File discovery, magic-byte inspection, safe decoding, quarantine routing, and filename scrubbing."""
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from pathlib import Path
@@ -147,6 +149,33 @@ def detect_file_type(rel_path: str, text: str) -> str:
     if stripped.startswith(("<?xml", "<ClinicalDocument", "%PDF-")):
         raise ValueError("unsupported_format")
     return "text"
+
+
+def detect_csv_delimiter(text: str, rel_path: str) -> str:
+    """Sniff CSV/TSV delimiter (comma, semicolon, tab, or pipe) from header + sample rows."""
+    if Path(rel_path).suffix.lower() == ".tsv":
+        return "\t"
+    lines = [ln for ln in text.splitlines() if ln.strip()][:6]
+    if not lines:
+        return ","
+    sample = "\n".join(lines)
+    best_delim = ","
+    best_score = (-1, -1)
+    for d in (",", ";", "\t", "|"):
+        try:
+            rows = list(csv.reader(io.StringIO(sample), delimiter=d))
+        except csv.Error:
+            continue
+        if not rows or len(rows[0]) < 2:
+            continue
+        ncols = len(rows[0])
+        consistent = sum(1 for r in rows[1:] if len(r) == ncols)
+        # Reward consistent column counts across all sample rows
+        score = (consistent * 10 + (1 if consistent == len(rows) - 1 else 0), ncols)
+        if score > best_score:
+            best_score = score
+            best_delim = d
+    return best_delim
 
 
 def sanitize_rel_output_path(

@@ -83,7 +83,7 @@ def run_zero_leak_audit(
                     m for m in ph_hits
                     if not (m.start() > 0 and norm[m.start() - 1] in "-0123456789abcdef")
                     and not (m.end() < len(norm) and norm[m.end()] in "-0123456789abcdef")
-                    and not re.search(r"(?i)(?:lot|batch|serial)\s*[#:-]?\s*$", norm[max(0, m.start() - 16):m.start()])
+                    and not re.search(r"(?i)(?:lot|batch|serial)(?:\s+no\.?)?\s*[#:-]?\s*$", norm[max(0, m.start() - 20):m.start()])
                 ]
                 if filtered:
                     hits += len(filtered)

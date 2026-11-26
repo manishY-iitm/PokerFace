@@ -54,12 +54,13 @@ _HONORIFIC_TOKENS = frozenset({
     "ji", "sahab", "saheb", "didi", "behenji", "bahenji", "bahanji",
     "bhai", "bhaiya", "babu", "amma", "chacha", "chachu", "mama",
     "papa", "tau", "kaka", "bua", "mausi", "nana", "nani", "dada", "dadi",
+    "garu", "anna", "akka", "ben",
     "mr", "mrs", "ms", "miss", "shri", "sri", "smt", "shrimati", "kumari",
     "master", "baby", "late", "sh", "km", "dr", "sriman",
     "so", "do", "wo", "co", "s/o", "d/o", "w/o", "c/o",
 })
 
-_WEAK_TOKENS = frozenset({"devi", "kumar", "kumari", "md", "mohd", "ji"})
+_WEAK_TOKENS = frozenset({"devi", "kumar", "kumari", "ji"})
 
 
 def strip_zero_width(text: str) -> str:
@@ -178,6 +179,10 @@ def phonetic_token(tok: str) -> str:
         return "mohamad"
     if t in ("kum", "km"):
         return "kumar"
+    if t in ("nair", "nayar"):
+        return "nayar"
+    if t in ("iyer", "aiyar", "ayar", "ayyar"):
+        return "ayar"
     # Phonetic equivalences: v<->w, ee<->i, oo<->u, ph<->f, sh<->s, z<->j, k<->q, doubled letters
     t = t.replace("ph", "f").replace("gh", "g").replace("kh", "k")
     t = t.replace("bh", "b").replace("dh", "d").replace("th", "t")
