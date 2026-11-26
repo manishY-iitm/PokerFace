@@ -47,7 +47,7 @@ _HONORIFIC_PATIENT_RE = re.compile(
 )
 
 _REPORT_OF_RE = re.compile(
-    r"(?iu)(?:Report\s+of|OPD\s+note\s+for|Rx\s+of|witnessed\s+by|called\s+by|raised\s+by|Referral\s*:)\s+"
+    r"(?iu)(?:Report\s+of|OPD\s+note\s+for|Rx\s+of|witnessed\s+by|witness|called\s+by|raised\s+by|Referral\s*:)\s+"
     r"([A-Z\u0900-\u097f][\w\u0900-\u097f.-]{1,25}(?:\s+[A-Z\u0900-\u097f][\w\u0900-\u097f.-]{1,25}){0,2})"
 )
 
@@ -61,7 +61,7 @@ _HINDI_KO_RE = re.compile(
 
 _HINDI_GRAM_RE = re.compile(r"(?u)(?:ग्राम|गाँव)\s*[:.]?\s*([^\n,|;]{2,40})")
 
-_TITLE_NAME_RE = re.compile(r"\b([A-Z][a-z]{2,20}(?:\s+[A-Z][a-z]{2,20}){1,2})\b")
+_TITLE_NAME_RE = re.compile(r"\b([A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?(?:\s+[A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?){1,2})\b")
 _DEVA_NAME_RE = re.compile(r"([\u0900-\u097f]{2,20}(?:\s+[\u0900-\u097f]{2,20}){1,2})")
 _WHATSAPP_SENDER_RE = re.compile(r"\]\s*([^:\n]{2,40}):")
 _WORD_TOK_RE = re.compile(r"[A-Za-z\u0900-\u097f]{3,}")
