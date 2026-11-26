@@ -68,7 +68,7 @@ _PASSPORT_LABELED_RE = re.compile(r"(?iu)(?:passport|पासपोर्ट)\s
 _IFSC_RE = re.compile(r"\b[A-Z]{4}0[A-Z0-9]{6}\b")
 _BANK_AC_RE = re.compile(r"(?iu)(?:a/c|acct|account|खाता)\s*(?:no\.?)?\s*[:=#-]?\s*(\d{9,18})\b")
 _VEHICLE_RE = re.compile(r"\b[A-Z]{2}[-\s]?\d{1,2}[-\s]?[A-Z]{1,3}[-\s]?\d{4}\b")
-_EMAIL_RE = re.compile(r"(?:mailto:)?([\w.+-]+@[\w-]+(?:\.[\w.-]+)+)", re.I)
+_EMAIL_RE = re.compile(r"(?<![\w.+-])(?:mailto:)?([\w.+-]+@[\w-]+(?:\.[\w.-]+)+)", re.I)
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"'()]+", re.I)
 _IP_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b")
 _INSURANCE_RE = re.compile(r"\b(?:PMJAY-[A-Z]{2}-\d{6,14}|POL/\d{2,4}/\d{5,12})\b")
@@ -112,8 +112,8 @@ _LOCALITY_RE = re.compile(
 )
 _LANDMARK_RE = re.compile(
     r"(?iu)(?:"
-    r"(?:near|opp\.?|opposite|behind|beside)\s+[^,\n;|]{2,45}"
-    r"|(?:[^\s,]+(?:\s+[^\s,]+){0,3}\s+के\s+(?:पीछे|पास|सामने))"
+    r"\b(?:near|opp\.?|opposite|behind|beside)\s+[^,\n;|]{2,45}"
+    r"|(?<!\S)[^\s,]{1,25}(?:\s+[^\s,]{1,25}){0,3}\s+के\s+(?:पीछे|पास|सामने)"
     r")"
 )
 _VILLAGE_RE = re.compile(r"(?iu)(?:Vill\.?|Village|Gram|Gaon|गाँव|ग्राम)\s*[:.]?\s*([^,\n;|]{2,40})")

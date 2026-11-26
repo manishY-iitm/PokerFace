@@ -103,22 +103,25 @@ def run_pipeline(input_dir: Path, output_dir: Path, cfg: RuntimeConfig | None = 
         for nm in rec.names_raw:
             patient_names.add(nm)
             for tok in normalize_text(nm).split():
-                if len(tok) >= 4 and not guard.is_medical_or_geo_phrase(tok):
-                    filename_name_tokens.add(tok.lower())
-                if ctoks is not None and len(tok) >= 3 and not guard.is_medical_or_geo_phrase(tok):
-                    ctoks.add(tok)
+                tok_clean = tok.strip(".,;:")
+                if len(tok_clean) >= 4 and not guard.is_medical_or_geo_phrase(tok_clean):
+                    filename_name_tokens.add(tok_clean.lower())
+                if ctoks is not None and len(tok_clean) >= 3 and not guard.is_medical_or_geo_phrase(tok_clean):
+                    ctoks.add(tok_clean)
         for gn in rec.guardian_names_raw:
             relative_names.add(gn)
             if ctoks is not None:
                 for tok in normalize_text(gn).split():
-                    if len(tok) >= 3 and not guard.is_medical_or_geo_phrase(tok):
-                        ctoks.add(tok)
+                    tok_clean = tok.strip(".,;:")
+                    if len(tok_clean) >= 3 and not guard.is_medical_or_geo_phrase(tok_clean):
+                        ctoks.add(tok_clean)
         if rec.village:
             villages.add(rec.village)
             if ctoks is not None:
                 for tok in normalize_text(rec.village).split():
-                    if len(tok) >= 3:
-                        ctoks.add(tok)
+                    tok_clean = tok.strip(".,;:")
+                    if len(tok_clean) >= 3 and not guard.is_medical_or_geo_phrase(tok_clean):
+                        ctoks.add(tok_clean)
 
     for rec in all_records:
         if rec.cluster_id and rec.cluster_id in cluster_tokens_map:

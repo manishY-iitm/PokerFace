@@ -27,9 +27,22 @@ def _parse_gender(val: str) -> str | None:
     return None
 
 
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t=", "\r=")
+
+
+def _sanitize_csv_cell(cell: str) -> str:
+    """Strip embedded NUL bytes and neutralize spreadsheet formula injection triggers."""
+    cleaned = cell.replace("\x00", "")
+    if cleaned.startswith(_FORMULA_TRIGGERS):
+        return "'" + cleaned
+    return cleaned
+
+
 def _parse_age_sex(val: str) -> tuple[int | None, str | None]:
     v = normalize_text(val).strip()
-    m = re.search(r"(\d{1,3})\s*(?:yrs?|years?|y|वर्ष)?\s*(?:/\s*([mf]|male|female|महिला|पुरुष))?", v, re.I)
+    if v.startswith("-"):
+        return None, None
+    m = re.search(r"(\d+)\s*(?:yrs?|years?|y|वर्ष)?\s*(?:/\s*([mf]|male|female|महिला|पुरुष))?", v, re.I)
     if not m:
         return None, None
     age = int(m.group(1))
@@ -105,8 +118,13 @@ def parse_csv_file(
                 last_part = val
             elif role == "patient_name":
                 rec.names_raw.append(val)
+                if "," in val:
+                    parts = [p.strip() for p in val.split(",") if p.strip()]
+                    if len(parts) == 2:
+                        rec.names_raw.append(f"{parts[1]} {parts[0]}")
             elif role == "relative_name":
                 clean_rel = re.sub(r"(?i)^(?:s/o|d/o|w/o|c/o)\s*", "", val).strip()
+                clean_rel = re.sub(r"(?i)\s*\([^)]*(?:PAN|AADHAAR|ABHA|ID)\s*:[^)]*\)", "", clean_rel).strip()
                 if clean_rel and clean_rel.lower() not in ("na", "n/a"):
                     rec.guardian_names_raw.append(clean_rel)
             elif role == "phone":
@@ -214,7 +232,7 @@ def sanitize_csv_file(
         else:
             # Check if header itself contains a known patient name
             red_h, n_det = redact_free_text(hn, guard, ner, allow_unlabeled_fallback=False)
-            clean_header.append(red_h)
+            clean_header.append(_sanitize_csv_cell(red_h))
             fentry.identifiers_detected += n_det
     is_clean_ref = fentry.rel_input_path.startswith("clean/")
     has_mrn_col = "mrn" in fentry.col_roles
@@ -222,6 +240,7 @@ def sanitize_csv_file(
     need_pid_col = (not is_clean_ref and not has_mrn_col and not has_name_col and any(r.pseudonym for r in fentry.records))
     if need_pid_col:
         clean_header.append("patient_id")
+    clean_header = [_sanitize_csv_cell(h_c) for h_c in clean_header]
     w.writerow(clean_header)
 
     for rec in fentry.records:
@@ -337,7 +356,7 @@ def sanitize_csv_file(
                 out_row.append(val)
             elif role == "medical_preserve":
                 # Still guard against sneaky phone/aadhaar inside medical cells
-                if _PHONE_10_RE.search(val) or _AADHAAR_RE.search(val) or _ABHA_NUM_RE.search(val):
+                if _PHONE_10_RE.search(val) or _AADHAAR_RE.search(val) or _ABHA_NUM_RE.search(val) or _MRN_EXPLICIT_RE.search(val):
                     red, n_det = redact_free_text(val, guard, ner, allow_unlabeled_fallback=False)
                     out_row.append(red)
                     fentry.identifiers_detected += n_det
@@ -359,6 +378,6 @@ def sanitize_csv_file(
             out_row.append(rec.pseudonym or "")
         elif rec.pseudonym and not psn_written and not has_name_col and out_row:
             out_row[0] = f"{out_row[0]} ({rec.pseudonym})"
-        w.writerow(out_row)
+        w.writerow([_sanitize_csv_cell(c) for c in out_row])
 
     return buf.getvalue()

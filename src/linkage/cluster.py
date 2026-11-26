@@ -125,8 +125,14 @@ def link_and_assign_clusters(records: list[PatientRecord], cfg: RuntimeConfig) -
     for _root, grp in sorted(clusters.items(), key=lambda kv: min(r.record_uid for r in kv[1])):
         grp.sort(key=lambda r: r.record_uid)
 
-        # Anonymous or ambiguous records get pseudonym = None and per-record date shift
+        # Anonymous, weak-singleton, or ambiguous records get pseudonym = None and per-record date shift
         has_id = any(r.names_raw or r.all_mrns or r.phones or r.gov_ids for r in grp)
+        if has_id and len(grp) == 1:
+            r0 = grp[0]
+            if not (r0.all_mrns or r0.gov_ids or r0.phones or r0.dob or r0.reported_age is not None):
+                from src.nlp.indic_norm import strong_name_tokens
+                if all(len(strong_name_tokens(nm)) < 2 for nm in r0.names_raw):
+                    has_id = False
         is_ambig = len(grp) == 1 and records.index(grp[0]) in weak_ambiguous if len(grp) == 1 else False
         if not has_id or is_ambig:
             for r in grp:

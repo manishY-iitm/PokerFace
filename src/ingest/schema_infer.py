@@ -9,7 +9,9 @@ from rapidfuzz import fuzz
 from src.nlp.indic_norm import normalize_text
 
 # Regexes for value-distribution content sniffing on unseen/opaque column names (e.g., col_7)
-_VAL_PHONE_RE = re.compile(r"^(?:\+?91[\s.-]?|0)?[6-9]\d{4}[\s.-]?\d{5}$|^(?:\+?91[\s.-]?|0)?[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4}$")
+_VAL_PHONE_RE = re.compile(
+    r"^(?:(?:\+?91[\s.-]?|0)?[6-9]\d{4}[\s.-]?\d{5}|(?:\+?91[\s.-]?|0)?[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4}|[6-9]\.\d{3,10}[eE]\+?0?9)$"
+)
 _VAL_AADHAAR_RE = re.compile(r"^(?:\d{4}[\s-]?\d{4}[\s-]?\d{4}|[Xx*]{4}[\s-]?[Xx*]{4}[\s-]?\d{4})$")
 _VAL_ABHA_RE = re.compile(r"^(?:91[\s-]?)?\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}$")
 _VAL_PAN_RE = re.compile(r"^[A-Z]{5}\d{4}[A-Z]$")
@@ -19,6 +21,7 @@ _VAL_DATE_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}(?:T.*)?|\d{1,2}[/-]\d{1,2}[/-]
 _VAL_GENDER_RE = re.compile(r"^(?:m|f|o|male|female|other|महिला|पुरुष)$", re.I)
 _VAL_AGE_SEX_RE = re.compile(r"^\d{1,3}\s*/\s*(?:m|f|male|female)$", re.I)
 _VAL_REL_RE = re.compile(r"^(?:s/o|d/o|w/o|c/o)\s+\S+", re.I)
+_CLINICAL_CO_HINT_RE = re.compile(r"(?i)(?:fever|cough|pain|weakness|bp\s+\d|mg\b|days\b|syndrome|palsy|apgar|ringer|lactate|;)")
 _VAL_MRN_RE = re.compile(r"^(?:SNJ/\d{2}/\d+|JJH-\d+|DHH\d{4}-\d+|UHID-\d+|IPD-\d{4}-\d+|ADM\d+)$", re.I)
 
 _FUZZY_KEY_TARGETS = {
@@ -65,16 +68,20 @@ def classify_field_name(name: str, parent_key: str = "") -> str:
     if any(w in k for w in ("uhid", "mrn", "ipd", "reg no", "registration no", "patient id", "patientid", "patient ref", "hospital uhid")):
         return "mrn"
 
+    # Names / Patient labels (explicit before substring 'lab' match)
+    if any(w in k for w in ("patient name", "patients name", "patient label", "pt label", "rogi naam", "rogi ka naam", "rogi", "mareez")):
+        return "patient_name"
+
     # Preserved clinical/reference fields (check before generic name checks!)
     if any(w in k for w in ("doctor", "consultant", "referred by", "ref doctor", "practitioner")):
         return "doctor"
     if any(w in k for w in (
         "diagnosis", "procedure", "package", "loinc", "vitals", "bp", "pulse", "temp",
-        "spo2", "weight", "drug", "strength", "frequency", "duration", "complaints",
+        "spo2", "weight", "drug", "strength", "frequency", "duration", "complaints", "complaint",
         "history", "department", "amount", "ref range", "reference range", "ward",
-        "beds", "occupied", "dengue", "facility", "hospital", "lab", "panel", "test",
-        "unit", "result", "status", "bill no", "visit id", "sample id", "trip",
-    )):
+        "beds", "occupied", "dengue", "facility", "hospital", "panel", "test",
+        "unit", "result", "status", "bill no", "visit id", "sample id", "trip", "prescription",
+    )) or re.search(r"\b(?:lab|labs|lab name)\b", k):
         return "medical_preserve"
 
     # Contact
@@ -98,7 +105,7 @@ def classify_field_name(name: str, parent_key: str = "") -> str:
         return "patient_name"
     if k == "name" and pk in ("panels", "panel", "facility", "hospital", "organization", "ward", "wards", "department", "drug", "tests"):
         return "medical_preserve"
-    if any(w in k for w in ("patient name", "patients name", "rogi naam", "rogi ka naam", "naam", "raised by")) or k in ("name", "patient", "pt name"):
+    if any(w in k for w in ("patient name", "patients name", "patient label", "pt label", "rogi naam", "rogi ka naam", "naam", "raised by")) or k in ("name", "patient", "pt name"):
         return "patient_name"
 
     # Demographics
@@ -173,7 +180,7 @@ def infer_role_from_values(values: list[str]) -> str:
             counts["age_sex"] += 1
         elif _VAL_GENDER_RE.match(s):
             counts["gender"] += 1
-        elif _VAL_REL_RE.match(s):
+        elif _VAL_REL_RE.match(s) and not (s.lower().startswith("c/o") and _CLINICAL_CO_HINT_RE.search(s)):
             counts["relative_name"] += 1
         elif _VAL_DATE_RE.match(s):
             counts["clinical_date"] += 1

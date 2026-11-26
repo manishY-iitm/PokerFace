@@ -184,13 +184,23 @@ def score_pair_detailed(
     if a.gender and b.gender and a.gender != b.gender:
         return ScoreResult(-1000.0, True, "gender_conflict")
 
+    # Check exact Gov ID / MRN early so boundary age glitches (e.g. age=0) don't veto exact ID+name pairs
+    exact_gov_agree = any(
+        a.gov_ids.get(k) and b.gov_ids.get(k) and a.gov_ids.get(k) == b.gov_ids.get(k)
+        for k in ("aadhaar", "abha", "pan", "passport", "voter")
+    )
+    mrns_a_early = {m.strip().upper() for m in a.all_mrns if m}
+    mrns_b_early = {m.strip().upper() for m in b.all_mrns if m}
+    exact_mrn_agree = bool(mrns_a_early & mrns_b_early)
+
     # 2. Hard MNL: Age conflict (adjusted for encounter year difference, max 3 years)
     if a.reported_age is not None and b.reported_age is not None:
         year_gap = 0
         if a.reference_date and b.reference_date:
             year_gap = abs(a.reference_date.year - b.reference_date.year)
         if abs(a.reported_age - b.reported_age) > 3 + year_gap:
-            return ScoreResult(-1000.0, True, "age_conflict")
+            if not (exact_gov_agree or exact_mrn_agree):
+                return ScoreResult(-1000.0, True, "age_conflict")
 
     # 3. Hard MNL: Exact DOB conflict (unless DD/MM <-> MM/DD swap)
     dob_swapped = False
@@ -304,8 +314,12 @@ def score_pair_detailed(
 
     if a.gender and b.gender and a.gender == b.gender:
         score += float(w.get("same_gender", 1.0))
-    if a.reported_age is not None and b.reported_age is not None and abs(a.reported_age - b.reported_age) <= 2:
-        score += float(w.get("compatible_age", 1.0))
+    if a.reported_age is not None and b.reported_age is not None:
+        age_diff = abs(a.reported_age - b.reported_age)
+        if age_diff == 0:
+            score += float(w.get("exact_age", 1.5))
+        elif age_diff <= 2:
+            score += float(w.get("compatible_age", 0.5))
 
     # Rule: Shared phone or shared address ALONE without compatible name/age/gender cannot exceed link threshold
     if not strong_match and name_bonus == 0.0:

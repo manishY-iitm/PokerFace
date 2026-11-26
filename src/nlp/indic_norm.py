@@ -6,8 +6,10 @@ import unicodedata
 
 _ZERO_WIDTH_CHARS = frozenset({
     "\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\ufeff", "\u00ad", "\u2060",
+    "\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "\u2066", "\u2067", "\u2068", "\u2069",
 })
-_ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u200e\u200f\ufeff\u00ad\u2060]")
+_ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff\u00ad]")
+_BIDI_RLO_RE = re.compile(r"\u202e([^\u202c\r\n]{1,64})\u202c?")
 
 _HOMOGLYPHS = {
     "\u0410": "A", "\u0412": "B", "\u0415": "E", "\u041a": "K", "\u041c": "M",
@@ -98,7 +100,9 @@ def map_span_to_original(start: int, end: int, index_map: list[int], orig_len: i
 
 
 def normalize_text(text: str) -> str:
-    """NFKC + zero-width strip + homoglyph fold + ASCII digits."""
+    """Resolve Bidi RLO spans, NFKC normalize, strip zero-width/Bidi chars, fold homoglyphs, map Indic digits."""
+    if "\u202e" in text:
+        text = _BIDI_RLO_RE.sub(lambda m: m.group(1)[::-1], text)
     s = unicodedata.normalize("NFKC", text)
     s = strip_zero_width(s)
     s = fold_homoglyphs(s)

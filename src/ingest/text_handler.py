@@ -59,9 +59,26 @@ def parse_text_file(
     )
 
     if rec.has_patient_signal:
-        protected = guard.find_protected_spans(norm)
-        regex_hits = detect_regex_pii(norm, protected)
-        ner_hits = ner.detect(norm, protected, allow_unlabeled_fallback=False)
+        regex_hits = []
+        ner_hits = []
+        if len(norm) > 80_000:
+            pos = 0
+            n_len = len(norm)
+            while pos < n_len:
+                end = min(n_len, pos + 50_000)
+                if end < n_len:
+                    sp = norm.rfind(" ", pos + 40_000, end)
+                    if sp != -1:
+                        end = sp + 1
+                chunk = norm[pos:end]
+                c_prot = guard.find_protected_spans(chunk)
+                regex_hits.extend(detect_regex_pii(chunk, c_prot))
+                ner_hits.extend(ner.detect(chunk, c_prot, allow_unlabeled_fallback=False))
+                pos = end
+        else:
+            protected = guard.find_protected_spans(norm)
+            regex_hits = detect_regex_pii(norm, protected)
+            ner_hits = ner.detect(norm, protected, allow_unlabeled_fallback=False)
 
         for hit in regex_hits + ner_hits:
             if hit.kind == "PATIENT_NAME":

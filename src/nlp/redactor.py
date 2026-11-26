@@ -13,8 +13,9 @@ _DOB_LINE_RE = re.compile(
     r"(?iu)(?:DOB|Date\s+of\s+Birth|Janm\s+Tithi|जन्म\s*तिथि)\s*[:=-]\s*([^\n,;|]+)"
 )
 _AGE_INLINE_RE = re.compile(
-    r"(?iu)\b(\d{1,3})\s*(?:Yrs?|Years?|Y)\s*(?:/\s*([MF]|Male|Female|Other))?\b"
+    r"(?iu)(?<![-\d])\b(\d{1,3})\s*(?:Yrs?|Years?|Y)\s*(?:/\s*([MF]|Male|Female|Other))?\b"
 )
+_AGE_PAREN_RE = re.compile(r"\((\d{1,3})\s*([MF])\)")
 _AGE_HINDI_RE = re.compile(r"(?u)(?:आयु|उम्र)\s*[:=-]\s*(\d{1,3})\s*(वर्ष|साल)?")
 _AGE_LABEL_RE = re.compile(r"(?iu)(?:Age(?:\s*/\s*Sex)?)\s*[:=-]\s*(\d{1,3})(?:\s*(?:/\s*([MF]))|\s*(Yrs?|Years?))?")
 
@@ -143,7 +144,11 @@ def redact_free_text(
     if extra_terms:
         for term, kind in extra_terms:
             t_norm = normalize_text(term).strip()
-            if len(t_norm) < 3 or guard.is_medical_or_geo_phrase(t_norm):
+            if len(t_norm) < 3:
+                continue
+            if kind not in ("VILLAGE", "DISTRICT") and guard.is_medical_or_geo_phrase(t_norm):
+                continue
+            if kind in ("VILLAGE", "DISTRICT") and not high_risk and guard.is_medical_or_geo_phrase(t_norm):
                 continue
             rx = re.compile(rf"(?iu)(?<![\w\u0900-\u097f]){re.escape(t_norm)}(?![\w\u0900-\u097f])")
             for m in rx.finditer(norm):
@@ -204,6 +209,11 @@ def redact_free_text(
         out = _AGE_LABEL_RE.sub(_sub_age_lbl, out)
         out = _AGE_HINDI_RE.sub(_sub_age_hindi, out)
         out = _AGE_INLINE_RE.sub(_sub_age_inline, out)
+        out = _AGE_PAREN_RE.sub(
+            lambda m: f"({generalize_age_value(int(m.group(1)), age_band_width, high_risk=high_risk)} {m.group(2)})"
+            if int(m.group(1)) <= 120 else m.group(0),
+            out,
+        )
 
     # 5. Shift clinical dates
     if shift_days != 0:

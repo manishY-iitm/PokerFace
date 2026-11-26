@@ -12,6 +12,7 @@ from typing import Any
 
 from src.config import RuntimeConfig
 from src.ingest.csv_handler import _parse_age_sex, _parse_gender
+from src.ingest.router import _reject_json_constant
 from src.ingest.schema_infer import classify_field_name
 from src.models import FileEntry, PatientRecord
 from src.nlp.date_shifter import parse_date_safe, shift_date_str
@@ -130,7 +131,7 @@ def parse_json_file(
     has_bom: bool,
 ) -> FileEntry:
     try:
-        data = json.loads(text)
+        data = json.loads(text, parse_constant=_reject_json_constant)
     except (json.JSONDecodeError, ValueError, RecursionError) as exc:
         raise ValueError("invalid_json") from exc
 
@@ -212,29 +213,43 @@ def parse_json_file(
     )
 
 
+_SAFE_SCHEMA_KEYS = frozenset({
+    "system", "hospital", "exported_by", "generated_at", "source_path",
+    "_export_meta", "visits", "patients", "results", "facility", "schema",
+    "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets",
+    "form", "attachment", "contenttype", "data", "__proto__", "constructor",
+    "prototype", "doc_type", "gzip_base64", "double_base64", "hex_payload",
+    "url_encoded", "windows_path", "bp", "diagnosis", "village", "pin",
+    "district", "location", "contact", "identifiers", "encounter", "patient",
+    "extensions", "hinglish_note", "medications", "vitals", "hba1c", "doctor",
+    "admit_date", "discharge_date", "visit_id", "mrn", "uhid", "abha", "name",
+    "guardian", "age", "gender", "phone", "email", "verified", "insurance",
+    "notes", "clinical_notes",
+})
+
+
 def _sanitize_key(
     key: str,
     guard: MedicalGuard,
     ner: PiiNer,
     mrn_to_psn: dict[str, str],
     fentry: FileEntry,
+    known_tokens: set[str] | None = None,
 ) -> str:
     kn = normalize_text(key)
     m = _MRN_EXPLICIT_RE.search(kn)
     if m:
         fentry.identifiers_detected += 1
         return mrn_to_psn.get(m.group(0).upper(), "[MRN]")
-    # Only scrub key if it looks like a person name / phone / PII (never scrub clinical/schema keys)
-    if kn.lower() in (
-        "system", "hospital", "exported_by", "generated_at", "source_path",
-        "_export_meta", "visits", "patients", "results", "facility", "schema",
-        "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets",
-        "form", "attachment", "contenttype", "data", "__proto__", "constructor",
-        "prototype", "doc_type", "gzip_base64", "double_base64", "hex_payload",
-        "url_encoded", "windows_path", "bp", "diagnosis",
-    ):
+    kn_low = kn.lower()
+    if kn_low in _SAFE_SCHEMA_KEYS:
         return key
-    red, n_det = redact_free_text(kn, guard, ner, allow_unlabeled_fallback=True)
+    # Check underscore-separated unknown keys like patient_Mohammad_Arif_meta
+    if not kn_low.startswith("patient_") and classify_field_name(kn) != "unknown":
+        return key
+    red, n_det = redact_free_text(
+        kn, guard, ner, allow_unlabeled_fallback=True, known_patient_tokens=known_tokens,
+    )
     if n_det > 0:
         fentry.identifiers_detected += n_det
         return red
@@ -325,8 +340,9 @@ def _sanitize_json_node(
     if isinstance(node, dict):
         out: dict[str, Any] = {}
         psn = rec.pseudonym if rec else None
+        ktoks = rec.extra.get("cluster_tokens") if rec else None
         for k, v in node.items():
-            sk = _sanitize_key(str(k), guard, ner, mrn_to_psn, fentry)
+            sk = _sanitize_key(str(k), guard, ner, mrn_to_psn, fentry, known_tokens=ktoks)
             role = classify_field_name(str(k), parent_key)
 
             if isinstance(v, (dict, list)):

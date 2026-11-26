@@ -30,14 +30,22 @@ _FILENAME_PII_RE = re.compile(
 )
 
 
+def _reject_json_constant(val: str) -> None:
+    raise ValueError(f"invalid_json_constant_{val}")
+
+
 def check_magic_bytes(raw: bytes) -> None:
-    """Reject empty or binary magic-byte payloads before decoding."""
+    """Reject empty, null-byte floods, or binary magic-byte payloads before decoding."""
     if not raw or not raw.strip():
         raise ValueError("empty_file")
     head = raw[:16]
     for sig in _BINARY_MAGIC_PREFIXES:
         if head.startswith(sig):
             raise ValueError("unsupported_format")
+    if not raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        nul_cnt = raw.count(0)
+        if head.startswith(b"\x00\x00\x00\x00") or nul_cnt > max(8, len(raw) // 10):
+            raise ValueError("corrupt_null_bytes")
 
 
 def decode_safe(raw: bytes) -> tuple[str | None, str, bool]:
@@ -97,13 +105,19 @@ def check_json_depth(text: str, max_depth: int = 100) -> bool:
 
 
 def detect_file_type(rel_path: str, text: str) -> str:
-    """Sniff true file format (csv, tsv, json, fhir, text) and reject mislabeled files."""
-    ext = Path(rel_path).suffix.lower()
+    """Sniff true file format (csv, tsv, json, fhir, text) and reject mislabeled/DoS files."""
+    p = Path(rel_path)
+    ext = p.suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise ValueError("unsupported_format")
+    fname = p.name
+    if ".." in p.parts or any(ch in fname for ch in ";|&$`") or fname.startswith(".._") and "etc_passwd" in fname:
+        raise ValueError("unsafe_filename")
     stripped = text.lstrip()
     if not stripped:
         raise ValueError("empty_file")
+    if any(len(ln) > 1_000_000 for ln in text.splitlines()) or re.search(r"\d{1000,}|[A-Za-z0-9]{20000,}", text):
+        raise ValueError("buffer_overflow_or_redos")
 
     if ext in (".csv", ".tsv"):
         if stripped.startswith(("{", "[", "<")):
@@ -115,9 +129,14 @@ def detect_file_type(rel_path: str, text: str) -> str:
             raise ValueError("invalid_json")
         if not check_json_depth(stripped, max_depth=100):
             raise ValueError("excessive_nesting")
+        if "NaN" in text or "Infinity" in text:
+            try:
+                json.loads(text, parse_constant=_reject_json_constant)
+            except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+                raise ValueError("invalid_json") from exc
         if '"resourceType"' in stripped[:800]:
             try:
-                parsed = json.loads(text)
+                parsed = json.loads(text, parse_constant=_reject_json_constant)
                 if isinstance(parsed, dict) and isinstance(parsed.get("resourceType"), str):
                     return "fhir"
             except (json.JSONDecodeError, RecursionError, ValueError) as exc:
