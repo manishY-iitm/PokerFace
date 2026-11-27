@@ -187,7 +187,8 @@ def sanitize_rel_output_path(
     p = Path(rel_path)
     stem_norm = normalize_text(p.stem)
 
-    has_pii = bool(
+    has_unsafe_name = bool(re.search(r"(?:\.\.|[;`$()&|~<>!])", rel_path))
+    has_pii = has_unsafe_name or bool(
         _PHONE_10_RE.search(stem_norm)
         or _MRN_EXPLICIT_RE.search(stem_norm)
         or _FILENAME_PII_RE.search(stem_norm)

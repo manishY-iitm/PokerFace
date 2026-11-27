@@ -90,7 +90,8 @@ _PHONE_MASKED_RE = re.compile(r"\b\d{2}[X*x]{4,6}\d{2,4}\b")
 _MRN_EXPLICIT_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:SNJ/\d{2}/\d{4,8}|JJH-\d{5,9}|DHH\d{4}-\d{4,8}|DHH-IPD-\d{4,8}|"
     r"UHID-\d{4,8}|IPD[-/]\d{2,4}[-/]\d{4,8}|IP/\d{2}/\d{4,8}|ADM-?\d{2,9}(?:-\d{3,8})?|"
-    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|"
+    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/][A-Z]{1,6}[-/]\d{4,8}|"
+    r"[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|"
     r"[A-Z]{2,6}(?:[-/.][A-Z0-9]{1,8}){1,3}[-/.]\d{4,8}|"
     r"[A-Z]{3,6}-[A-Z0-9]{2,10}-\d{2,8}|"
     r"[A-Z]{2,4}-\d{5,9}|[A-Z]{2,4}\d{7,10})(?![A-Za-z0-9])",
@@ -112,9 +113,9 @@ _LOCALITY_RE = re.compile(
     r"(?iu)(?:"
     r"(?:Mohalla|मोहल्ला|Colony|कॉलोनी|Nagar|Sector|Basti|Gali|Street|Road|Niwasi|निवासी)\s+[^,\n;|]{2,40}"
     r"|(?<![\w\u0900-\u097f])(?:[A-Z\u0900-\u097f][\w\u0900-\u097f.'-]{1,22}[ \t]+){1,3}"
-    r"(?:Colony|Nagar|Chowk|Chawk|Bazar|Bazaar|Vihar|Enclave|Peth|Lane|Road|Street|Marg|Tola|Toli|"
+    r"(?:Colony|Nagar|Chowk|Chawk|Bazar|Bazaar|Vihar|Enclave|Peth|Lane|Road|Street|Marg|Tola|Toli|Basti|"
     r"Para|Pally|Nivas|Kunj|Puram|Pura|Park|Layout|Extension|Extn|Camp|"
-    r"कॉलोनी|नगर|चौक|बाज़ार|बाजार|विहार|पेठ|लेन|रोड|मार्ग|टोला|टोली|मोहल्ला|कैंप)(?![\w\u0900-\u097f])"
+    r"कॉलोनी|नगर|चौक|बाज़ार|बाजार|विहार|पेठ|लेन|रोड|मार्ग|टोला|टोली|मोहल्ला|कैंप|बस्ती)(?![\w\u0900-\u097f])"
     r"(?:[ \t]+\d{1,4}[A-Za-z]?)?"
     r"|\bWard\s+\d+(?:\s*\([^)]+\))?"
     r"|वार्ड\s+\d+(?:\s*\([^)]+\))?"

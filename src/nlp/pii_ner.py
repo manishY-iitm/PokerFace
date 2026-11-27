@@ -31,7 +31,7 @@ _RELATIVE_LABEL_RE = re.compile(
     r"pita\s+ka\s+naam|pati\s+ka\s+naam|"
     r"(?:पिता/पति|पति|पिता|माता)\s*का\s*नाम|पुत्र|पुत्री|पत्नी)\s*[:.]?|"
     r"(?:पिता/पति|पति|पिता|माता)\s*[:=-])"
-    r"\s*([^\n,;|()]+?)(?=\s*(?:\s{2,}|Address|Age|Sex|Mob|Mobile|Phone|Ph\b|Tel\b|counselled|advised|noted|bataya|आयु|पता|\n|,|;|\||\(|\)|$))"
+    r"\s*([^\n,;|()]+?)(?=\s*(?:\s{2,}|Address|Age|Sex|Mob|Mobile|Phone|Contact|Cont|Email|Mail|Ph\b|Tel\b|counselled|advised|noted|bataya|आयु|पता|\n|,|;|\||\(|\)|$))"
 )
 
 _RESIDENT_OF_RE = re.compile(
@@ -92,11 +92,11 @@ _HINDI_KO_RE = re.compile(
 
 _HINDI_GRAM_RE = re.compile(r"(?u)(?:ग्राम|गाँव)\s*[:.]?\s*([^\n,|;]{2,40})")
 
-_TITLE_NAME_RE = re.compile(r"\b([A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?(?:\s+[A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?){1,2})\b")
+_TITLE_RUN_RE = re.compile(r"\b([A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?(?:[ \t]+[A-Z][a-z]{1,20}(?:[-'][A-Z][a-z]{1,20})?)*)\b")
 _UNDERSCORE_NAME_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z][a-z]{1,20}(?:_[A-Z][a-z]{1,20}){1,2})(?![A-Za-z0-9])")
 _DEVA_NAME_RE = re.compile(r"([\u0900-\u097f]{2,20}(?:\s+[\u0900-\u097f]{2,20}){1,2})")
 _WHATSAPP_SENDER_RE = re.compile(r"\]\s*([^:\n]{2,40}):")
-_WORD_TOK_RE = re.compile(r"[A-Za-z\u0900-\u097f]{3,}")
+_WORD_TOK_RE = re.compile(r"[A-Za-z\u0900-\u097f](?:[A-Za-z\u0900-\u097f'-]{1,28}[A-Za-z\u0900-\u097f])")
 
 
 _EXTRA_NON_NAME_WORDS = frozenset({
@@ -385,18 +385,38 @@ class PiiNer:
                 ):
                     continue
                 _add(m.start(), m.end(), "PATIENT_NAME", 63)
-            for m in _TITLE_NAME_RE.finditer(norm):
-                cand = m.group(1)
-                toks = cand.split()
-                if any(
-                    t.lower() in self.guard.all_medical
-                    or t.lower() in self.guard.geo_words
-                    or t.lower() in self.non_name_words
-                    or t.lower() in self.honorifics
-                    for t in toks
-                ):
-                    continue
-                _add(m.start(1), m.end(1), "PATIENT_NAME", 60)
+            for m in _TITLE_RUN_RE.finditer(norm):
+                # Split contiguous capitalized runs on non-name/medical/geo words so
+                # leading labels ("Attendant Hema Malini Rao") never mask the real name.
+                sub_start: int | None = None
+                sub_end = 0
+                sub_toks = 0
+                for wm in re.finditer(r"[A-Za-z][A-Za-z'-]*", m.group(0)):
+                    w_low = wm.group(0).lower()
+                    is_bad = (
+                        w_low in self.guard.all_medical
+                        or w_low in self.guard.geo_words
+                        or w_low in self.non_name_words
+                        or w_low in self.honorifics
+                    )
+                    if is_bad:
+                        if sub_start is not None and sub_toks >= 2:
+                            _add(sub_start, sub_end, "PATIENT_NAME", 60)
+                        sub_start = None
+                        sub_toks = 0
+                    else:
+                        abs_s = m.start() + wm.start()
+                        abs_e = m.start() + wm.end()
+                        if sub_start is None:
+                            sub_start = abs_s
+                        sub_end = abs_e
+                        sub_toks += 1
+                        if sub_toks == 3:
+                            _add(sub_start, sub_end, "PATIENT_NAME", 60)
+                            sub_start = None
+                            sub_toks = 0
+                if sub_start is not None and sub_toks >= 2:
+                    _add(sub_start, sub_end, "PATIENT_NAME", 60)
 
             for m in _DEVA_NAME_RE.finditer(norm):
                 cand = m.group(1)

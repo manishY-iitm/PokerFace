@@ -19,11 +19,13 @@ _VAL_EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(?:\.[\w.-]+)+$")
 _VAL_PIN_RE = re.compile(r"^[1-8]\d{5}$")
 _VAL_DATE_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}(?:T.*)?|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})$")
 _VAL_GENDER_RE = re.compile(r"^(?:m|f|o|male|female|other|महिला|पुरुष)$", re.I)
+_VAL_AGE_RE = re.compile(r"^\d{1,3}\s*(?:yrs?|years?|y|months?|mons?|days?|d|वर्ष|साल)$", re.I)
 _VAL_AGE_SEX_RE = re.compile(r"^\d{1,3}\s*/\s*(?:m|f|male|female)$", re.I)
 _VAL_REL_RE = re.compile(r"^(?:s/o|d/o|w/o|c/o|पुत्र|पुत्री|पत्नी)\s+\S+", re.I)
 _CLINICAL_CO_HINT_RE = re.compile(r"(?i)(?:fever|cough|pain|weakness|bp\s+\d|mg\b|days\b|syndrome|palsy|apgar|ringer|lactate|;)")
 _VAL_MRN_RE = re.compile(
     r"^(?:SNJ/\d{2}/\d+|JJH-\d+|DHH\d{4}-\d+|UHID-\d+|IPD[-/]\d{2,4}[-/]\d+|ADM-?\d+|"
+    r"[A-Z]{2,6}\d{2,4}[-/][A-Z]{1,6}[-/]\d{4,8}|"
     r"[A-Z]{2,6}(?:[-/.][A-Z0-9]{1,8}){1,3}[-/.]\d{4,8}|[A-Z]{2,4}-\d{5,9}|[A-Z]{2,4}\d{7,10})$",
     re.I,
 )
@@ -71,47 +73,52 @@ def classify_field_name(name: str, parent_key: str = "") -> str:
         return "metadata_pii"
 
     # Identifiers (check before generic "hospital" / "name" checks!)
-    if any(w in k for w in ("aadhaar", "aadhar", "aadhr", "uidai", "uid number", "natl id")) or k == "uid":
+    if any(w in k for w in ("aadhaar", "aadhar", "aadhr", "uidai", "uid number", "natl id")) or re.search(r"\buid\b", k):
         return "aadhaar"
-    if "abha" in k and "address" in k:
+    if re.search(r"\babha\b", k) and "address" in k:
         return "abha_address"
-    if "abha" in k or "healthid" in k or "health id" in k:
+    if re.search(r"\b(?:abha|healthid|health id)\b", k):
         return "abha"
-    if k in ("pan", "payer pan", "pan no") or "pan " in k or k.endswith(" pan"):
+    if re.search(r"\bpan\b", k):
         return "pan"
     if any(w in k for w in ("pmjay", "abpmjay", "policy", "scheme id")) or k in ("card", "card no") or (
         "insurance" in k and not any(w in k for w in ("covered", "coverage", "status", "flag", "provider", "company", "plan", "type", "name"))
     ):
         return "insurance"
-    if any(w in k for w in (
-        "uhid", "mrn", "ipd", "reg no", "reg code", "registration no", "patient id", "patientid",
-        "patient ref", "hospital uhid", "hosp id", "hosp no", "ssh no", "vzc id", "mrno", "mr no",
-        "kramank", "kramank", "panjikaran", "kramank", "kramaank", "kramanka",
-    )) or k in ("ref", "id", "kramank", "kramaank"):
+    is_date_word = any(w in k for w in ("tithi", "dinank", "tarikh", "date", "birth", "janm"))
+    if (not is_date_word) and (
+        any(w in k for w in (
+            "uhid", "mrn", "ipd", "reg no", "reg code", "reg id", "regid", "registration no",
+            "patient id", "patientid", "patient ref", "hospital uhid", "hosp id", "hosp no",
+            "ssh no", "vzc id", "mrno", "mr no", "laabharthi code",
+            "kramank", "kramaank", "kramanka", "kram san", "panjikaran",
+        )) or k in ("ref", "id")
+    ):
         return "mrn"
 
     # Names / Patient labels (explicit before substring 'lab' match)
     if any(w in k for w in ("patient name", "patients name", "patient label", "pt label", "rogi naam", "rogi ka naam", "rogi", "mareez", "mariz")) or k in ("beneficiary", "insured", "insured person"):
         return "patient_name"
 
-    # Preserved clinical/reference fields (check before generic name checks!)
+    # Preserved clinical/reference fields (check before generic name/contact checks!)
     if any(w in k for w in ("doctor", "consultant", "referred by", "ref doctor", "practitioner", "ref by")):
         return "doctor"
     if any(w in k for w in (
         "diagnosis", "procedure", "package", "loinc", "vitals", "bp", "pulse", "temp",
         "spo2", "weight", "drug", "strength", "frequency", "duration", "complaints", "complaint",
         "symptoms", "symptom", "treatment", "outcome", "imaging", "findings", "glucose",
-        "hba1c", "cholesterol", "bmi", "insurance covered", "insurance provider", "socioeconomic",
+        "hba1c", "cholesterol", "bmi", "platelet", "platelets", "hemoglobin", "haemoglobin",
+        "bilirubin", "creatinine", "insurance covered", "insurance provider", "socioeconomic",
         "blood type", "blood group", "medical condition", "admission type", "medication", "medications", "room number",
         "surgery", "pkg code", "nidan", "claim",
         "history", "department", "amount", "ref range", "reference range", "ward",
         "beds", "occupied", "dengue", "facility", "hospital", "panel", "test",
         "unit", "result", "status", "bill no", "visit id", "sample id", "trip", "prescription",
-    )) or re.search(r"\b(?:lab|labs|lab name)\b", k):
+    )) or re.search(r"\b(?:lab|labs|lab name|wbc|rbc)\b", k):
         return "medical_preserve"
 
     # Contact
-    if any(w in k for w in ("phone", "mobile", "mob", "tel", "callback", "contact no", "sampark", "dooraabhash", "doorbhash")) or k in ("cell", "ph", "contact"):
+    if re.search(r"\b(?:phone|mobile|mob|tel|callback|contact|sampark|sanpark|dooraabhash|doorbhash|durabhash|cell|ph)\b", k):
         return "phone"
     if "email" in k or "e mail" in k:
         return "email"
@@ -139,7 +146,7 @@ def classify_field_name(name: str, parent_key: str = "") -> str:
         return "dob"
     if any(w in k for w in ("age sex", "age gender")):
         return "age_sex"
-    if k in ("age", "umar", "aayu", "aayuu", "patient age", "yrs", "age yr", "age y") or k.startswith("age "):
+    if k in ("age", "umar", "aayu", "aayuu", "patient age", "yrs", "age yr", "age y") or k.startswith("age ") or re.search(r"\b(?:umar|aayu|aayuu)\b", k):
         return "age"
     if k in ("gender", "sex", "ling", "linga", "sx", "g"):
         return "gender"
@@ -194,6 +201,7 @@ def infer_role_from_values(values: list[str], key_hint: str = "") -> str:
     counts: Counter[str] = Counter()
     kh = _norm_key(key_hint)
     opaque_key = (len(kh) <= 4 or kh.startswith("col ") or kh.startswith("field"))
+    date_years: list[int] = []
     for s in sample:
         if _VAL_EMAIL_RE.match(s):
             counts["email"] += 1
@@ -209,12 +217,17 @@ def infer_role_from_values(values: list[str], key_hint: str = "") -> str:
             counts["mrn"] += 1
         elif _VAL_AGE_SEX_RE.match(s):
             counts["age_sex"] += 1
+        elif _VAL_AGE_RE.match(s):
+            counts["age"] += 1
         elif _VAL_GENDER_RE.match(s):
             counts["gender"] += 1
         elif _VAL_REL_RE.match(s) and not (s.lower().startswith("c/o") and _CLINICAL_CO_HINT_RE.search(s)):
             counts["relative_name"] += 1
         elif _VAL_DATE_RE.match(s):
             counts["clinical_date"] += 1
+            ym = re.search(r"\b((?:19|20)\d{2})\b", s)
+            if ym:
+                date_years.append(int(ym.group(1)))
         elif _VAL_PIN_RE.match(s):
             counts["pin"] += 1
         elif opaque_key and _VAL_PERSON_NAME_RE.match(s):
@@ -227,6 +240,10 @@ def infer_role_from_values(values: list[str], key_hint: str = "") -> str:
     top_role, top_cnt = counts.most_common(1)[0]
     thresh = 0.75 if top_role == "patient_name" else 0.55
     if top_cnt / n >= thresh:
+        if top_role == "clinical_date" and date_years:
+            birth_era = sum(1 for y in date_years if y <= 2012)
+            if birth_era / len(date_years) >= 0.60:
+                return "dob"
         return top_role
     return "unknown"
 
@@ -240,6 +257,15 @@ def infer_csv_column_roles(header: list[str], rows: list[list[str]]) -> list[str
             sniffed = infer_role_from_values(col_vals, key_hint=header[idx] if idx < len(header) else "")
             if sniffed != "unknown":
                 roles[idx] = sniffed
+        elif role == "patient_name":
+            col_vals = [normalize_text(r[idx]).strip() for r in rows[:60] if idx < len(r) and normalize_text(r[idx]).strip()]
+            if col_vals:
+                rel_hits = sum(
+                    1 for s in col_vals
+                    if _VAL_REL_RE.match(s) and not (s.lower().startswith("c/o") and _CLINICAL_CO_HINT_RE.search(s))
+                )
+                if rel_hits / len(col_vals) >= 0.50:
+                    roles[idx] = "relative_name"
     return roles
 
 

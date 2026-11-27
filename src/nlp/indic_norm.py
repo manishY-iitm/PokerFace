@@ -82,6 +82,10 @@ def normalize_with_map(text: str) -> tuple[str, list[int]]:
     for orig_idx, ch in enumerate(text):
         if ch in _ZERO_WIDTH_CHARS:
             continue
+        if ch == "\x00":
+            norm_chars.append(" ")
+            index_map.append(orig_idx)
+            continue
         mapped = _HOMOGLYPHS.get(ch, ch).translate(_INDIC_DIGITS)
         nfkc = unicodedata.normalize("NFKC", mapped)
         for out_ch in nfkc:
@@ -102,6 +106,8 @@ def map_span_to_original(start: int, end: int, index_map: list[int], orig_len: i
 
 def normalize_text(text: str) -> str:
     """Resolve Bidi RLO spans, NFKC normalize, strip zero-width/Bidi chars, fold homoglyphs, map Indic digits."""
+    if "\x00" in text:
+        text = text.replace("\x00", " ")
     if "\u202e" in text:
         text = _BIDI_RLO_RE.sub(lambda m: m.group(1)[::-1], text)
     s = unicodedata.normalize("NFKC", text)
