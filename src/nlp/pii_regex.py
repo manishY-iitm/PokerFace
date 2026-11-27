@@ -111,7 +111,8 @@ _HOUSE_RE = re.compile(
 )
 _LOCALITY_RE = re.compile(
     r"(?iu)(?:"
-    r"(?:Mohalla|मोहल्ला|Colony|कॉलोनी|Nagar|Sector|Basti|Gali|Street|Road|Niwasi|निवासी)\s+[^,\n;|]{2,40}"
+    r"(?:Mohalla|मोहल्ला|Colony|कॉलोनी|Nagar|Basti|Gali|Street|Road|Niwasi|निवासी)\s+[^,\n;|]{2,40}"
+    r"|(?:Sector|सेक्टर|Block|ब्लॉक|Phase|फेज|Plot|प्लॉट)\s*[A-Za-z0-9\u0900-\u097f/-]{1,25}"
     r"|(?<![\w\u0900-\u097f])(?:[A-Z\u0900-\u097f][\w\u0900-\u097f.'-]{1,22}[ \t]+){1,3}"
     r"(?:Colony|Nagar|Chowk|Chawk|Bazar|Bazaar|Vihar|Enclave|Peth|Lane|Road|Street|Marg|Tola|Toli|Basti|"
     r"Para|Pally|Nivas|Kunj|Puram|Pura|Park|Layout|Extension|Extn|Camp|"

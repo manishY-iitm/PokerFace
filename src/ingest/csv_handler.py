@@ -6,7 +6,19 @@ import io
 import re
 
 from src.config import RuntimeConfig
-from src.ingest.schema_infer import infer_csv_column_roles
+from src.ingest.schema_infer import (
+    _VAL_AADHAAR_RE,
+    _VAL_ABHA_RE,
+    _VAL_AGE_RE,
+    _VAL_DATE_RE,
+    _VAL_EMAIL_RE,
+    _VAL_GENDER_RE,
+    _VAL_MRN_RE,
+    _VAL_PAN_RE,
+    _VAL_PIN_RE,
+    classify_field_name,
+    infer_csv_column_roles,
+)
 from src.models import FileEntry, PatientRecord
 from src.nlp.date_shifter import parse_date_safe, shift_date_str
 from src.nlp.indic_norm import normalize_text
@@ -87,6 +99,81 @@ def _detect_csv_hints(header: list[str], body: list[list[str]]) -> tuple[str, st
     return "dmy", None
 
 
+def _cell_role_fit(val: str, role: str) -> int:
+    """Return +1 if cell conforms to semantic role, -1 on clear mismatch, 0 otherwise."""
+    v = normalize_text(val).strip()
+    if not v:
+        return 0
+    if role == "pin":
+        return 1 if _VAL_PIN_RE.match(v) else -1
+    if role == "phone":
+        digs = re.sub(r"\D", "", v)
+        return 1 if (len(digs) >= 8 and not re.search(r"[A-Za-z\u0900-\u097f]{3,}", v)) else -1
+    if role == "email":
+        return 1 if _VAL_EMAIL_RE.match(v) else -1
+    if role == "aadhaar":
+        return 1 if _VAL_AADHAAR_RE.match(v) else -1
+    if role == "abha":
+        return 1 if _VAL_ABHA_RE.match(v) else -1
+    if role == "pan":
+        return 1 if _VAL_PAN_RE.match(v) else -1
+    if role == "gender":
+        return 1 if _VAL_GENDER_RE.match(v) else -1
+    if role in ("dob", "clinical_date"):
+        return 1 if _VAL_DATE_RE.match(v) else -1
+    if role == "age":
+        return 1 if _VAL_AGE_RE.match(v) or re.fullmatch(r"\d{1,3}", v) else -1
+    if role == "mrn":
+        return 1 if _VAL_MRN_RE.match(v) else 0
+    if role in ("village", "tehsil", "district", "state"):
+        if ";" in v or v.startswith(("=", "+", "-", "@")) or re.search(r"(?i)\b(?:c/o|h/o|mg\b|hba1c)\b", v):
+            return -1
+        return 1 if re.fullmatch(r"[A-Za-z\u0900-\u097f .'-]{2,40}", v) else 0
+    return 0
+
+
+def _realign_shifted_rows(
+    header: list[str],
+    body: list[list[str]],
+    col_roles: list[str],
+    delimiter: str,
+) -> list[list[str]]:
+    """Coalesce unquoted-delimiter splits inside text/note columns back to header alignment."""
+    n_hdr = len(header)
+    if n_hdr < 2:
+        return body
+    overflow_cols = [j for j, r in enumerate(col_roles) if j < n_hdr - 1 and r in ("unknown", "address", "medical_preserve")]
+    if not overflow_cols:
+        return body
+
+    out: list[list[str]] = []
+    for row in body:
+        if len(row) <= n_hdr:
+            out.append(row)
+            continue
+        extra = len(row) - n_hdr
+        best_j: int | None = None
+        best_gain = 0
+        for j in overflow_cols:
+            if j + 1 + extra > len(row):
+                continue
+            shifted_tail = row[j + 1 + extra :]
+            unshifted_tail = row[j + 1 : n_hdr]
+            tail_roles = col_roles[j + 1 :]
+            s_score = sum(_cell_role_fit(v, r) for v, r in zip(shifted_tail, tail_roles))
+            u_score = sum(_cell_role_fit(v, r) for v, r in zip(unshifted_tail, tail_roles))
+            gain = s_score - u_score
+            if s_score > 0 and gain > best_gain:
+                best_gain = gain
+                best_j = j
+        if best_j is not None:
+            merged = delimiter.join(row[best_j : best_j + 1 + extra])
+            out.append(row[:best_j] + [merged] + row[best_j + 1 + extra :])
+        else:
+            out.append(row)
+    return out
+
+
 def parse_csv_file(
     rel_path: str,
     text: str,
@@ -101,7 +188,12 @@ def parse_csv_file(
 
     header = rows[0]
     body = rows[1:]
-    col_roles = infer_csv_column_roles(header, body)
+    aligned_body = [r for r in body if len(r) == len(header)]
+    if aligned_body:
+        col_roles = infer_csv_column_roles(header, aligned_body)
+    else:
+        col_roles = [classify_field_name(h) for h in header]
+    body = _realign_shifted_rows(header, body, col_roles, delimiter)
     date_hint, hosp_hint = _detect_csv_hints(header, body)
 
     is_clean_ref = rel_path.startswith("clean/")

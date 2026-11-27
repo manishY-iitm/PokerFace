@@ -32,7 +32,7 @@ _DIAG_LINE_RE = re.compile(r"(?iu)(?:Diagnosis|निदान)\s*[:=-]\s*[^\n]+
 
 # K/C/O or H/O clinical history (CRITICAL: H/o DM, H/o HTN = History of, NOT Husband of!)
 _HISTORY_RE = re.compile(
-    r"(?i)(?:\b(?:no\s+)?k\s*/\s*c\s*/\s*o\b|\bh\s*/\s*o\b)\s+[^.\n;]+"
+    r"(?i)(?:\b(?:no\s+)?k\s*/\s*c\s*/\s*o\b|\bh\s*/\s*o\b)\s+[^.,\n;|]+"
 )
 
 # C/O complaint vs C/O relative (never match inside K/C/O)
