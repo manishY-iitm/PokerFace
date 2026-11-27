@@ -54,12 +54,13 @@ _HONORIFIC_TOKENS = frozenset({
     "ji", "sahab", "saheb", "didi", "behenji", "bahenji", "bahanji",
     "bhai", "bhaiya", "babu", "amma", "chacha", "chachu", "mama",
     "papa", "tau", "kaka", "bua", "mausi", "nana", "nani", "dada", "dadi",
+    "garu", "anna", "akka", "ben",
     "mr", "mrs", "ms", "miss", "shri", "sri", "smt", "shrimati", "kumari",
     "master", "baby", "late", "sh", "km", "dr", "sriman",
     "so", "do", "wo", "co", "s/o", "d/o", "w/o", "c/o",
 })
 
-_WEAK_TOKENS = frozenset({"devi", "kumar", "kumari", "md", "mohd", "ji"})
+_WEAK_TOKENS = frozenset({"devi", "kumar", "kumari", "ji"})
 
 
 def strip_zero_width(text: str) -> str:
@@ -81,6 +82,10 @@ def normalize_with_map(text: str) -> tuple[str, list[int]]:
     for orig_idx, ch in enumerate(text):
         if ch in _ZERO_WIDTH_CHARS:
             continue
+        if ch == "\x00":
+            norm_chars.append(" ")
+            index_map.append(orig_idx)
+            continue
         mapped = _HOMOGLYPHS.get(ch, ch).translate(_INDIC_DIGITS)
         nfkc = unicodedata.normalize("NFKC", mapped)
         for out_ch in nfkc:
@@ -101,6 +106,8 @@ def map_span_to_original(start: int, end: int, index_map: list[int], orig_len: i
 
 def normalize_text(text: str) -> str:
     """Resolve Bidi RLO spans, NFKC normalize, strip zero-width/Bidi chars, fold homoglyphs, map Indic digits."""
+    if "\x00" in text:
+        text = text.replace("\x00", " ")
     if "\u202e" in text:
         text = _BIDI_RLO_RE.sub(lambda m: m.group(1)[::-1], text)
     s = unicodedata.normalize("NFKC", text)
@@ -178,6 +185,10 @@ def phonetic_token(tok: str) -> str:
         return "mohamad"
     if t in ("kum", "km"):
         return "kumar"
+    if t in ("nair", "nayar"):
+        return "nayar"
+    if t in ("iyer", "aiyar", "ayar", "ayyar"):
+        return "ayar"
     # Phonetic equivalences: v<->w, ee<->i, oo<->u, ph<->f, sh<->s, z<->j, k<->q, doubled letters
     t = t.replace("ph", "f").replace("gh", "g").replace("kh", "k")
     t = t.replace("bh", "b").replace("dh", "d").replace("th", "t")

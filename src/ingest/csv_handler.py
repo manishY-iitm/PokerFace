@@ -6,7 +6,19 @@ import io
 import re
 
 from src.config import RuntimeConfig
-from src.ingest.schema_infer import infer_csv_column_roles
+from src.ingest.schema_infer import (
+    _VAL_AADHAAR_RE,
+    _VAL_ABHA_RE,
+    _VAL_AGE_RE,
+    _VAL_DATE_RE,
+    _VAL_EMAIL_RE,
+    _VAL_GENDER_RE,
+    _VAL_MRN_RE,
+    _VAL_PAN_RE,
+    _VAL_PIN_RE,
+    classify_field_name,
+    infer_csv_column_roles,
+)
 from src.models import FileEntry, PatientRecord
 from src.nlp.date_shifter import parse_date_safe, shift_date_str
 from src.nlp.indic_norm import normalize_text
@@ -38,6 +50,19 @@ def _sanitize_csv_cell(cell: str) -> str:
     return cleaned
 
 
+_HONORIFIC_SUFFIX_RE = re.compile(
+    r"(?i)\s+(?:ji|sahab|saheb|didi|behenji|bahenji|bhai|bhaiya|babu|amma|chachu|mama|papa|garu|anna|akka|ben)$"
+)
+_SCI_PHONE_RE = re.compile(r"^\d+(?:\.\d+)?[eE][+-]?\d+$")
+
+
+_SIMPLE_SCALAR_RE = re.compile(r"^(?:-?\d{1,5}(?:\.\d+)?|true|false|none|na|n/a)$", re.I)
+
+
+def _strip_honorific(name: str) -> str:
+    return _HONORIFIC_SUFFIX_RE.sub("", name.strip()).strip()
+
+
 def _parse_age_sex(val: str) -> tuple[int | None, str | None]:
     v = normalize_text(val).strip()
     if v.startswith("-"):
@@ -50,18 +75,103 @@ def _parse_age_sex(val: str) -> tuple[int | None, str | None]:
     return (age if 0 <= age <= 120 else None), g
 
 
-def _detect_csv_hints(rel_path: str, header: list[str]) -> tuple[str, str | None]:
-    low = rel_path.lower()
+_SLASH_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b")
+
+
+def _detect_csv_hints(header: list[str], body: list[list[str]]) -> tuple[str, str | None]:
     hdr_joined = " ".join(header).lower()
-    if "mm/dd/yyyy" in hdr_joined or "arogya_legacy" in low:
-        return "mdy", "arogya"
-    if "sanjeevani" in low:
-        return "dmy", "sanjeevani"
-    if "jeevanjyoti" in low:
-        return "dmy", "jeevanjyoti"
-    if "dhh" in low:
-        return "dmy", "dhh"
+    if "mm/dd/yyyy" in hdr_joined:
+        return "mdy", None
+    if "dd/mm/yyyy" in hdr_joined:
+        return "dmy", None
+    saw_mdy_only = False
+    saw_dmy_only = False
+    for row in body[:120]:
+        for cell in row:
+            for m in _SLASH_DATE_RE.finditer(normalize_text(cell)):
+                p1, p2 = int(m.group(1)), int(m.group(2))
+                if p1 <= 12 and p2 > 12:
+                    saw_mdy_only = True
+                elif p1 > 12 and p2 <= 12:
+                    saw_dmy_only = True
+    if saw_mdy_only and not saw_dmy_only:
+        return "mdy", None
     return "dmy", None
+
+
+def _cell_role_fit(val: str, role: str) -> int:
+    """Return +1 if cell conforms to semantic role, -1 on clear mismatch, 0 otherwise."""
+    v = normalize_text(val).strip()
+    if not v:
+        return 0
+    if role == "pin":
+        return 1 if _VAL_PIN_RE.match(v) else -1
+    if role == "phone":
+        digs = re.sub(r"\D", "", v)
+        return 1 if (len(digs) >= 8 and not re.search(r"[A-Za-z\u0900-\u097f]{3,}", v)) else -1
+    if role == "email":
+        return 1 if _VAL_EMAIL_RE.match(v) else -1
+    if role == "aadhaar":
+        return 1 if _VAL_AADHAAR_RE.match(v) else -1
+    if role == "abha":
+        return 1 if _VAL_ABHA_RE.match(v) else -1
+    if role == "pan":
+        return 1 if _VAL_PAN_RE.match(v) else -1
+    if role == "gender":
+        return 1 if _VAL_GENDER_RE.match(v) else -1
+    if role in ("dob", "clinical_date"):
+        return 1 if _VAL_DATE_RE.match(v) else -1
+    if role == "age":
+        return 1 if _VAL_AGE_RE.match(v) or re.fullmatch(r"\d{1,3}", v) else -1
+    if role == "mrn":
+        return 1 if _VAL_MRN_RE.match(v) else 0
+    if role in ("village", "tehsil", "district", "state"):
+        if ";" in v or v.startswith(("=", "+", "-", "@")) or re.search(r"(?i)\b(?:c/o|h/o|mg\b|hba1c)\b", v):
+            return -1
+        return 1 if re.fullmatch(r"[A-Za-z\u0900-\u097f .'-]{2,40}", v) else 0
+    return 0
+
+
+def _realign_shifted_rows(
+    header: list[str],
+    body: list[list[str]],
+    col_roles: list[str],
+    delimiter: str,
+) -> list[list[str]]:
+    """Coalesce unquoted-delimiter splits inside text/note columns back to header alignment."""
+    n_hdr = len(header)
+    if n_hdr < 2:
+        return body
+    overflow_cols = [j for j, r in enumerate(col_roles) if j < n_hdr - 1 and r in ("unknown", "address", "medical_preserve")]
+    if not overflow_cols:
+        return body
+
+    out: list[list[str]] = []
+    for row in body:
+        if len(row) <= n_hdr:
+            out.append(row)
+            continue
+        extra = len(row) - n_hdr
+        best_j: int | None = None
+        best_gain = 0
+        for j in overflow_cols:
+            if j + 1 + extra > len(row):
+                continue
+            shifted_tail = row[j + 1 + extra :]
+            unshifted_tail = row[j + 1 : n_hdr]
+            tail_roles = col_roles[j + 1 :]
+            s_score = sum(_cell_role_fit(v, r) for v, r in zip(shifted_tail, tail_roles))
+            u_score = sum(_cell_role_fit(v, r) for v, r in zip(unshifted_tail, tail_roles))
+            gain = s_score - u_score
+            if s_score > 0 and gain > best_gain:
+                best_gain = gain
+                best_j = j
+        if best_j is not None:
+            merged = delimiter.join(row[best_j : best_j + 1 + extra])
+            out.append(row[:best_j] + [merged] + row[best_j + 1 + extra :])
+        else:
+            out.append(row)
+    return out
 
 
 def parse_csv_file(
@@ -78,8 +188,13 @@ def parse_csv_file(
 
     header = rows[0]
     body = rows[1:]
-    col_roles = infer_csv_column_roles(header, body)
-    date_hint, hosp_hint = _detect_csv_hints(rel_path, header)
+    aligned_body = [r for r in body if len(r) == len(header)]
+    if aligned_body:
+        col_roles = infer_csv_column_roles(header, aligned_body)
+    else:
+        col_roles = [classify_field_name(h) for h in header]
+    body = _realign_shifted_rows(header, body, col_roles, delimiter)
+    date_hint, hosp_hint = _detect_csv_hints(header, body)
 
     is_clean_ref = rel_path.startswith("clean/")
     has_patient_cols = any(
@@ -117,20 +232,27 @@ def parse_csv_file(
             elif role == "last_name":
                 last_part = val
             elif role == "patient_name":
-                rec.names_raw.append(val)
+                cleaned_nm = _strip_honorific(val)
+                if cleaned_nm:
+                    rec.names_raw.append(cleaned_nm)
                 if "," in val:
-                    parts = [p.strip() for p in val.split(",") if p.strip()]
+                    parts = [_strip_honorific(p) for p in val.split(",") if p.strip()]
                     if len(parts) == 2:
-                        rec.names_raw.append(f"{parts[1]} {parts[0]}")
+                        rec.names_raw.append(f"{parts[1]} {parts[0]}".strip())
             elif role == "relative_name":
                 clean_rel = re.sub(r"(?i)^(?:s/o|d/o|w/o|c/o)\s*", "", val).strip()
                 clean_rel = re.sub(r"(?i)\s*\([^)]*(?:PAN|AADHAAR|ABHA|ID)\s*:[^)]*\)", "", clean_rel).strip()
                 if clean_rel and clean_rel.lower() not in ("na", "n/a"):
                     rec.guardian_names_raw.append(clean_rel)
             elif role == "phone":
-                digs = re.sub(r"\D", "", val)
-                if len(digs) >= 8:
-                    rec.phones.append(digs)
+                if _SCI_PHONE_RE.match(val):
+                    # Excel float scientific notation (e.g., 9.60677E+09) lacks exact last 4 digits;
+                    # avoid appending the "09" exponent as phone digits.
+                    pass
+                else:
+                    digs = re.sub(r"\D", "", val)
+                    if len(digs) >= 8:
+                        rec.phones.append(digs)
             elif role == "email" and "@" in val:
                 rec.emails.append(val.lower())
             elif role == "aadhaar":
@@ -144,7 +266,8 @@ def parse_csv_file(
             elif role == "pan":
                 rec.gov_ids["pan"] = val.upper()
             elif role == "insurance":
-                rec.gov_ids["insurance"] = val.upper()
+                if val.lower() not in ("true", "false", "yes", "no", "0", "1", "na", "n/a"):
+                    rec.gov_ids["insurance"] = val.upper()
             elif role == "gender":
                 rec.gender = _parse_gender(val)
             elif role == "age":
@@ -167,6 +290,8 @@ def parse_csv_file(
                 rec.tehsil = val
             elif role == "district":
                 rec.district = val
+            elif role == "state":
+                rec.state = val
             elif role == "pin":
                 digs = re.sub(r"\D", "", val)
                 if len(digs) == 6:
@@ -181,7 +306,7 @@ def parse_csv_file(
                         rec.reference_date = d
             elif role == "medical_preserve":
                 h = normalize_text(header[idx]).lower() if idx < len(header) else ""
-                if any(w in h for w in ("procedure", "diagnosis")):
+                if any(w in h for w in ("procedure", "diagnosis", "condition")):
                     rec.diagnoses.append(val)
 
         if first_part or last_part:
@@ -243,6 +368,8 @@ def sanitize_csv_file(
     clean_header = [_sanitize_csv_cell(h_c) for h_c in clean_header]
     w.writerow(clean_header)
 
+    unk_cache: dict[tuple[str, int, bool, str | None], tuple[str, int]] = {}
+
     for rec in fentry.records:
         row: list[str] = rec.raw_payload
         if is_clean_ref:
@@ -299,8 +426,11 @@ def sanitize_csv_file(
                 out_row.append("[PAN]")
                 fentry.identifiers_detected += 1
             elif role == "insurance":
-                out_row.append("[INSURANCE_ID]")
-                fentry.identifiers_detected += 1
+                if val.strip().lower() in ("true", "false", "yes", "no", "0", "1", "na", "n/a"):
+                    out_row.append(val)
+                else:
+                    out_row.append("[INSURANCE_ID]")
+                    fentry.identifiers_detected += 1
             elif role == "dob":
                 if rec.age_band:
                     out_row.append(rec.age_band)
@@ -343,36 +473,77 @@ def sanitize_csv_file(
                     out_row.append(rec.geo_generalized)
                 else:
                     out_row.append(val)
+            elif role == "state":
+                if rec.was_suppressed:
+                    out_row.append("SUPPRESSED")
+                elif rec.geo_generalized in ("North India", "South India", "East India", "West India", "Central India", "Northeast India", "*"):
+                    out_row.append(rec.geo_generalized)
+                else:
+                    out_row.append(val)
             elif role == "address":
                 red, n_det = redact_free_text(
                     val, guard, ner, is_address_field=True, allow_unlabeled_fallback=False,
                     extra_terms=extra_terms, high_risk=rec.is_rare_risk,
+                    geo_generalized=rec.geo_generalized,
                 )
                 out_row.append(red)
                 fentry.identifiers_detected += n_det
             elif role == "clinical_date":
-                out_row.append(shift_date_str(val, rec.date_shift_days, hint=rec.date_hint))
+                if _MRN_EXPLICIT_RE.search(val) or _PHONE_10_RE.search(val) or _AADHAAR_RE.search(val) or _ABHA_NUM_RE.search(val):
+                    red, n_det = redact_free_text(
+                        val, guard, ner, allow_unlabeled_fallback=False,
+                        extra_terms=extra_terms, patient_pseudonym=rec.pseudonym,
+                        shift_days=rec.date_shift_days, date_hint=rec.date_hint,
+                    )
+                    out_row.append(red)
+                    fentry.identifiers_detected += n_det
+                else:
+                    out_row.append(shift_date_str(val, rec.date_shift_days, hint=rec.date_hint))
             elif role == "doctor":
                 out_row.append(val)
             elif role == "medical_preserve":
-                # Still guard against sneaky phone/aadhaar inside medical cells
-                if _PHONE_10_RE.search(val) or _AADHAAR_RE.search(val) or _ABHA_NUM_RE.search(val) or _MRN_EXPLICIT_RE.search(val):
+                # Still guard against sneaky phone/aadhaar inside medical cells (skip plain decimals like billing/lab floats)
+                if not re.fullmatch(r"-?\d+(?:\.\d+)?", val.strip()) and (
+                    _PHONE_10_RE.search(val) or _AADHAAR_RE.search(val) or _ABHA_NUM_RE.search(val) or _MRN_EXPLICIT_RE.search(val)
+                ):
                     red, n_det = redact_free_text(val, guard, ner, allow_unlabeled_fallback=False)
                     out_row.append(red)
                     fentry.identifiers_detected += n_det
                 else:
                     out_row.append(val)
             else:
-                red, n_det = redact_free_text(
-                    val, guard, ner, allow_unlabeled_fallback=True,
-                    extra_terms=extra_terms,
-                    known_patient_tokens=rec.extra.get("cluster_tokens"),
-                    shift_days=rec.date_shift_days,
-                    date_hint=rec.date_hint, patient_pseudonym=None,
-                    age_band_width=cfg.age_band_years, high_risk=rec.is_rare_risk,
-                )
-                out_row.append(red)
-                fentry.identifiers_detected += n_det
+                if _SIMPLE_SCALAR_RE.match(val.strip()):
+                    out_row.append(val)
+                elif not extra_terms and not rec.extra.get("cluster_tokens"):
+                    ck = (val, rec.date_shift_days, rec.is_rare_risk, rec.geo_generalized)
+                    cached = unk_cache.get(ck)
+                    if cached is None:
+                        cached = redact_free_text(
+                            val, guard, ner, allow_unlabeled_fallback=True,
+                            extra_terms=extra_terms,
+                            known_patient_tokens=None,
+                            shift_days=rec.date_shift_days,
+                            date_hint=rec.date_hint, patient_pseudonym=None,
+                            age_band_width=cfg.age_band_years, high_risk=rec.is_rare_risk,
+                            geo_generalized=rec.geo_generalized,
+                        )
+                        if len(unk_cache) < 50_000:
+                            unk_cache[ck] = cached
+                    red, n_det = cached
+                    out_row.append(red)
+                    fentry.identifiers_detected += n_det
+                else:
+                    red, n_det = redact_free_text(
+                        val, guard, ner, allow_unlabeled_fallback=True,
+                        extra_terms=extra_terms,
+                        known_patient_tokens=rec.extra.get("cluster_tokens"),
+                        shift_days=rec.date_shift_days,
+                        date_hint=rec.date_hint, patient_pseudonym=None,
+                        age_band_width=cfg.age_band_years, high_risk=rec.is_rare_risk,
+                        geo_generalized=rec.geo_generalized,
+                    )
+                    out_row.append(red)
+                    fentry.identifiers_detected += n_det
 
         if need_pid_col:
             out_row.append(rec.pseudonym or "")

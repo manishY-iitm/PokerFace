@@ -89,11 +89,24 @@ def generate_blocks(records: list[PatientRecord], max_block_size: int = 200) -> 
             last_ph = phonetic_token(last_raw) if last_raw else ""
 
             # Block 4: (phonetic_last_name, phonetic_first_initial, gender)
+            # and (phonetic_first_name, phonetic_last_initial, gender)
             if last_ph and (first_ph or initials):
                 init_ch = first_ph[0] if first_ph else initials[0].lower()
                 buckets[f"b4:li:{last_ph}|{init_ch}|{g_tag}"].append(idx)
                 if g_tag != "*":
                     buckets[f"b4:li:{last_ph}|{init_ch}|*"].append(idx)
+            if first_ph and last_ph:
+                buckets[f"b4:fi:{first_ph}|{last_ph[0]}|{g_tag}"].append(idx)
+                if g_tag != "*":
+                    buckets[f"b4:fi:{first_ph}|{last_ph[0]}|*"].append(idx)
+            elif first_ph and not last_ph and initials:
+                # Single full word + initial ("F. Sharma" or "Vikram S."): index under both li and fi
+                init_ch = initials[0].lower()
+                buckets[f"b4:li:{first_ph}|{init_ch}|{g_tag}"].append(idx)
+                buckets[f"b4:fi:{first_ph}|{init_ch}|{g_tag}"].append(idx)
+                if g_tag != "*":
+                    buckets[f"b4:li:{first_ph}|{init_ch}|*"].append(idx)
+                    buckets[f"b4:fi:{first_ph}|{init_ch}|*"].append(idx)
 
             # Block 5: (phonetic_first_name, age_5yr_bucket, gender) + guardian corroboration
             stoks = strong_name_tokens(nm)

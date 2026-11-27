@@ -58,6 +58,10 @@ def _dobs_conflict(d1: dt.date, d2: dt.date) -> tuple[bool, bool]:
     return True, False
 
 
+def _consonant_skel(s: str) -> str:
+    return re.sub(r"[aeiou]", "", s)
+
+
 def _name_pair_analysis(na: str, nb: str) -> tuple[str, float]:
     """Compare two Indian names across scripts/initials.
 
@@ -117,8 +121,19 @@ def _name_pair_analysis(na: str, nb: str) -> tuple[str, float]:
     if ratio >= 88:
         return "fuzzy", 3.5
 
-    # Check if given names conflict (stops spouses/twins sharing phone/address/DOB!)
-    # Compatible if same token set overlap >= 1 non-surname or fuzz >= 78 on first tokens
+    # Check if given names or surnames conflict (stops spouses/twins & same-first-name collisions!)
+    if sa <= sb or sb <= sa:
+        return "fuzzy", 2.5
+    if first_a and first_b and last_a and last_b:
+        first_ok = first_a == first_b or fuzz.ratio(first_a, first_b) >= 82
+        last_ok = (
+            last_a == last_b
+            or fuzz.ratio(last_a, last_b) >= 78
+            or fuzz.ratio(_consonant_skel(last_a), _consonant_skel(last_b)) >= 78
+        )
+        if first_ok and last_ok:
+            return "fuzzy", 2.5
+        return "conflict", 0.0
     if first_a and first_b:
         if first_a == first_b or fuzz.ratio(first_a, first_b) >= 82 or (sa == sb):
             return "fuzzy", 2.0

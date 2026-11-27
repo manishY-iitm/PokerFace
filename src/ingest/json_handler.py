@@ -11,9 +11,9 @@ import urllib.parse
 from typing import Any
 
 from src.config import RuntimeConfig
-from src.ingest.csv_handler import _parse_age_sex, _parse_gender
+from src.ingest.csv_handler import _SIMPLE_SCALAR_RE, _parse_age_sex, _parse_gender, _strip_honorific
 from src.ingest.router import _reject_json_constant
-from src.ingest.schema_infer import classify_field_name
+from src.ingest.schema_infer import classify_field_name, infer_json_container_roles
 from src.models import FileEntry, PatientRecord
 from src.nlp.date_shifter import parse_date_safe, shift_date_str
 from src.nlp.indic_norm import normalize_text
@@ -23,14 +23,21 @@ from src.nlp.pii_regex import _MRN_EXPLICIT_RE
 from src.nlp.redactor import generalize_age_value, generalize_pin_value, redact_free_text
 
 
-def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> None:
+def _extract_from_obj(
+    obj: Any,
+    rec: PatientRecord,
+    parent_key: str = "",
+    key_roles: dict[str, str] | None = None,
+) -> None:
     if isinstance(obj, dict):
         first_p = ""
         last_p = ""
         for k, v in obj.items():
             role = classify_field_name(str(k), parent_key)
+            if role == "unknown" and key_roles:
+                role = key_roles.get(str(k), "unknown")
             if isinstance(v, (dict, list)):
-                _extract_from_obj(v, rec, parent_key=str(k).lower())
+                _extract_from_obj(v, rec, parent_key=str(k).lower(), key_roles=key_roles)
                 continue
             if v is None:
                 continue
@@ -45,7 +52,9 @@ def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> Non
             elif role == "last_name":
                 last_p = s
             elif role == "patient_name":
-                rec.names_raw.append(s)
+                cleaned_nm = _strip_honorific(s)
+                if cleaned_nm:
+                    rec.names_raw.append(cleaned_nm)
             elif role == "relative_name":
                 clean_rel = re.sub(r"(?i)^(?:s/o|d/o|w/o|c/o)\s*", "", s).strip()
                 if clean_rel:
@@ -68,6 +77,9 @@ def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> Non
                 rec.gov_ids["abha_address"] = s.lower()
             elif role == "pan":
                 rec.gov_ids["pan"] = s.upper()
+            elif role == "insurance":
+                if s.lower() not in ("true", "false", "yes", "no", "0", "1", "na", "n/a"):
+                    rec.gov_ids["insurance"] = s.upper()
             elif role == "gender":
                 rec.gender = _parse_gender(s)
             elif role == "age":
@@ -90,6 +102,8 @@ def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> Non
                 rec.tehsil = s
             elif role == "district":
                 rec.district = s
+            elif role == "state":
+                rec.state = s
             elif role == "pin":
                 digs = re.sub(r"\D", "", s)
                 if len(digs) == 6:
@@ -102,15 +116,18 @@ def _extract_from_obj(obj: Any, rec: PatientRecord, parent_key: str = "") -> Non
                     rec.clinical_dates.append(d)
                     if rec.reference_date is None:
                         rec.reference_date = d
-            elif role == "medical_preserve" and str(k).lower() in ("display", "procedure", "diagnosis"):
+            elif role == "medical_preserve" and str(k).lower() in ("display", "procedure", "diagnosis", "nidan", "surgery"):
                 rec.diagnoses.append(s)
         if first_p or last_p:
             full = f"{first_p} {last_p}".strip()
             if full:
-                rec.names_raw.insert(0, full)
+                if parent_key in ("kin", "relative", "guardian"):
+                    rec.guardian_names_raw.insert(0, full)
+                else:
+                    rec.names_raw.insert(0, full)
     elif isinstance(obj, list):
         for item in obj:
-            _extract_from_obj(item, rec, parent_key=parent_key)
+            _extract_from_obj(item, rec, parent_key=parent_key, key_roles=key_roles)
 
 
 def _find_record_container(data: dict[str, Any]) -> tuple[str, list[dict[str, Any]]] | None:
@@ -140,6 +157,7 @@ def parse_json_file(
 
     records: list[PatientRecord] = []
     if isinstance(data, list):
+        key_roles = infer_json_container_roles(data)
         for i, item in enumerate(data):
             loc = f"/{i}"
             rec = PatientRecord(
@@ -152,7 +170,7 @@ def parse_json_file(
                 has_patient_signal=(not is_clean and isinstance(item, dict)),
             )
             if isinstance(item, dict) and rec.has_patient_signal:
-                _extract_from_obj(item, rec)
+                _extract_from_obj(item, rec, key_roles=key_roles)
             records.append(rec)
         return FileEntry(
             rel_input_path=rel_path,
@@ -184,6 +202,7 @@ def parse_json_file(
         records.append(rec)
     else:
         key_name, items = container
+        key_roles = infer_json_container_roles(items)
         pointer_key = key_name.replace("~", "~0").replace("/", "~1")
         for i, item in enumerate(items):
             loc = f"/{pointer_key}/{i}"
@@ -197,7 +216,7 @@ def parse_json_file(
                 has_patient_signal=not is_clean,
             )
             if not is_clean:
-                _extract_from_obj(item, rec)
+                _extract_from_obj(item, rec, key_roles=key_roles)
             records.append(rec)
 
     return FileEntry(
@@ -215,8 +234,9 @@ def parse_json_file(
 
 _SAFE_SCHEMA_KEYS = frozenset({
     "system", "hospital", "exported_by", "generated_at", "source_path",
-    "_export_meta", "visits", "patients", "results", "facility", "schema",
-    "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets",
+    "_export_meta", "export_meta", "export_info", "record_count", "tool", "rows",
+    "visits", "patients", "results", "facility", "schema", "beneficiaries", "members",
+    "exported_at", "by_uhid", "by_name", "generated", "wards", "tickets", "map",
     "form", "attachment", "contenttype", "data", "__proto__", "constructor",
     "prototype", "doc_type", "gzip_base64", "double_base64", "hex_payload",
     "url_encoded", "windows_path", "bp", "diagnosis", "village", "pin",
@@ -224,7 +244,8 @@ _SAFE_SCHEMA_KEYS = frozenset({
     "extensions", "hinglish_note", "medications", "vitals", "hba1c", "doctor",
     "admit_date", "discharge_date", "visit_id", "mrn", "uhid", "abha", "name",
     "guardian", "age", "gender", "phone", "email", "verified", "insurance",
-    "notes", "clinical_notes",
+    "notes", "clinical_notes", "kin", "pt", "beneficiary", "abode", "residence",
+    "state_code", "slip", "bed", "diet", "t", "v", "u", "d", "n", "id",
 })
 
 
@@ -240,7 +261,17 @@ def _sanitize_key(
     m = _MRN_EXPLICIT_RE.search(kn)
     if m:
         fentry.identifiers_detected += 1
-        return mrn_to_psn.get(m.group(0).upper(), "[MRN]")
+        psn_rep = mrn_to_psn.get(m.group(0).upper(), "[MRN]")
+        # If the key is purely an MRN (or MRN + extra PII like "KR-6361141 Anirban Murmu"),
+        # return psn_rep or redact remainder so no patient name leaks in the key.
+        rest = (kn[:m.start()] + " " + kn[m.end():]).strip()
+        if not rest:
+            return psn_rep
+        red_rest, n_det = redact_free_text(
+            rest, guard, ner, allow_unlabeled_fallback=True, known_patient_tokens=known_tokens,
+        )
+        fentry.identifiers_detected += n_det
+        return f"{psn_rep} {red_rest}".strip() if n_det > 0 else psn_rep
     kn_low = kn.lower()
     if kn_low in _SAFE_SCHEMA_KEYS:
         return key
@@ -336,6 +367,8 @@ def _sanitize_json_node(
     mrn_to_psn: dict[str, str],
     fentry: FileEntry,
     extra_terms: list[tuple[str, str]],
+    key_roles: dict[str, str] | None = None,
+    unk_cache: dict[tuple[str, int, bool, str | None], tuple[str, int]] | None = None,
 ) -> Any:
     if isinstance(node, dict):
         out: dict[str, Any] = {}
@@ -344,10 +377,12 @@ def _sanitize_json_node(
         for k, v in node.items():
             sk = _sanitize_key(str(k), guard, ner, mrn_to_psn, fentry, known_tokens=ktoks)
             role = classify_field_name(str(k), parent_key)
+            if role == "unknown" and key_roles:
+                role = key_roles.get(str(k), "unknown")
 
             if isinstance(v, (dict, list)):
                 out[sk] = _sanitize_json_node(
-                    v, rec, str(k).lower(), cfg, guard, ner, mrn_to_psn, fentry, extra_terms
+                    v, rec, str(k).lower(), cfg, guard, ner, mrn_to_psn, fentry, extra_terms, key_roles=key_roles, unk_cache=unk_cache
                 )
                 continue
 
@@ -473,6 +508,7 @@ def _sanitize_json_node(
                 red, n_det = redact_free_text(
                     s, guard, ner, is_address_field=True, allow_unlabeled_fallback=False,
                     extra_terms=extra_terms, high_risk=bool(rec and rec.is_rare_risk),
+                    geo_generalized=rec.geo_generalized if rec else None,
                 )
                 fentry.identifiers_detected += n_det
                 out[sk] = red
@@ -488,6 +524,28 @@ def _sanitize_json_node(
                 if _MRN_EXPLICIT_RE.fullmatch(s.strip()):
                     fentry.identifiers_detected += 1
                     out[sk] = mrn_to_psn.get(s.strip().upper(), "[MRN]")
+                elif _SIMPLE_SCALAR_RE.match(s.strip()):
+                    out[sk] = s
+                elif unk_cache is not None and not extra_terms and not (rec and rec.extra.get("cluster_tokens")):
+                    ck = (s, rec.date_shift_days if rec else 0, bool(rec and rec.is_rare_risk), rec.geo_generalized if rec else None)
+                    cached = unk_cache.get(ck)
+                    if cached is None:
+                        cached = redact_free_text(
+                            s, guard, ner, allow_unlabeled_fallback=True,
+                            extra_terms=extra_terms,
+                            known_patient_tokens=None,
+                            shift_days=rec.date_shift_days if rec else 0,
+                            date_hint=rec.date_hint if rec else "dmy",
+                            patient_pseudonym=None,
+                            age_band_width=cfg.age_band_years,
+                            high_risk=bool(rec and rec.is_rare_risk),
+                            geo_generalized=rec.geo_generalized if rec else None,
+                        )
+                        if len(unk_cache) < 50_000:
+                            unk_cache[ck] = cached
+                    red, n_det = cached
+                    fentry.identifiers_detected += n_det
+                    out[sk] = red
                 else:
                     red, n_det = redact_free_text(
                         s, guard, ner, allow_unlabeled_fallback=True,
@@ -498,6 +556,7 @@ def _sanitize_json_node(
                         patient_pseudonym=None,
                         age_band_width=cfg.age_band_years,
                         high_risk=bool(rec and rec.is_rare_risk),
+                        geo_generalized=rec.geo_generalized if rec else None,
                     )
                     fentry.identifiers_detected += n_det
                     out[sk] = red
@@ -505,7 +564,7 @@ def _sanitize_json_node(
 
     if isinstance(node, list):
         return [
-            _sanitize_json_node(x, rec, parent_key, cfg, guard, ner, mrn_to_psn, fentry, extra_terms)
+            _sanitize_json_node(x, rec, parent_key, cfg, guard, ner, mrn_to_psn, fentry, extra_terms, key_roles=key_roles, unk_cache=unk_cache)
             for x in node
         ]
     return node
@@ -523,6 +582,7 @@ def sanitize_json_file(
 
     data = copy.deepcopy(fentry.raw_data)
     if isinstance(data, list):
+        key_roles = infer_json_container_roles(data)
         san_root = []
         for idx, item in enumerate(data):
             rec = fentry.records[idx] if idx < len(fentry.records) else None
@@ -531,7 +591,7 @@ def sanitize_json_file(
                 extra = [(nm, "PATIENT_NAME") for nm in rec.names_raw] + [(gn, "RELATIVE_NAME") for gn in rec.guardian_names_raw]
                 if rec.village:
                     extra.append((rec.village, "VILLAGE"))
-            san_root.append(_sanitize_json_node(item, rec, "", cfg, guard, ner, mrn_to_psn, fentry, extra))
+            san_root.append(_sanitize_json_node(item, rec, "", cfg, guard, ner, mrn_to_psn, fentry, extra, key_roles=key_roles))
         return json.dumps(san_root, ensure_ascii=False, indent=2) + "\n"
 
     if len(fentry.records) == 1 and fentry.records[0].loc == "doc":
@@ -542,13 +602,15 @@ def sanitize_json_file(
         sanitized = _sanitize_json_node(data, rec, "", cfg, guard, ner, mrn_to_psn, fentry, extra)
         return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n"
 
-    # Multi-record container JSON (e.g. visits, patients, results)
+    # Multi-record container JSON (e.g. visits, patients, results, rows, members)
     container = _find_record_container(data)
     if container is None:
         sanitized = _sanitize_json_node(data, None, "", cfg, guard, ner, mrn_to_psn, fentry, [])
         return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n"
 
-    container_key, _ = container
+    container_key, items = container
+    key_roles = infer_json_container_roles(items)
+    unk_cache: dict[tuple[str, int, bool, str | None], tuple[str, int]] = {}
     sanitized_top: dict[str, Any] = {}
     for k, v in data.items():
         if k == container_key and isinstance(v, list):
@@ -561,7 +623,7 @@ def sanitize_json_file(
                     if rec.village:
                         extra.append((rec.village, "VILLAGE"))
                 san_list.append(
-                    _sanitize_json_node(item, rec, k.lower(), cfg, guard, ner, mrn_to_psn, fentry, extra)
+                    _sanitize_json_node(item, rec, k.lower(), cfg, guard, ner, mrn_to_psn, fentry, extra, key_roles=key_roles, unk_cache=unk_cache)
                 )
             sanitized_top[k] = san_list
         else:

@@ -8,12 +8,12 @@ from typing import Iterable
 from src.config import DATA_DIR, RuntimeConfig
 from src.nlp.indic_norm import normalize_text
 
-# Clinicians / Doctors (unless preceded by Patient Name:)
+# Clinicians / Doctors (stop cleanly at sentence-ending periods; require Dr. after signed/referred by)
 _DOCTOR_RE = re.compile(
     r"(?iu)(?:^|(?<=[\s,;(]))"
-    r"(?:dr\.?|doctor|डॉ\.?|डॉक्टर|consultant|attending|surgeon|referred\s+by\s+dr\.?|signed\s+by)"
-    r"\s*[:.]?\s*(?:[A-Z\u0900-\u097f][\w.\u0900-\u097f'-]*"
-    r"(?:\s+[A-Z\u0900-\u097f][\w.\u0900-\u097f'-]*){0,3})"
+    r"(?:(?:consultant|attending|surgeon)\s*[:.]?\s*(?:dr\.?|doctor|डॉ\.?)?|(?:dr\.?|doctor|डॉ\.?|डॉक्टर)|(?:referred|signed)\s+by\s+dr\.?)"
+    r"\s*[:.]?\s*(?:[A-Z\u0900-\u097f]{1,2}\.|[A-Z\u0900-\u097f][\w\u0900-\u097f'-]{1,25})"
+    r"(?:[ \t]+(?:[A-Z\u0900-\u097f]{1,2}\.|[A-Z\u0900-\u097f][\w\u0900-\u097f'-]{1,25})){0,3}"
 )
 
 _DOCTOR_STOP_WORDS = frozenset({
@@ -32,7 +32,7 @@ _DIAG_LINE_RE = re.compile(r"(?iu)(?:Diagnosis|निदान)\s*[:=-]\s*[^\n]+
 
 # K/C/O or H/O clinical history (CRITICAL: H/o DM, H/o HTN = History of, NOT Husband of!)
 _HISTORY_RE = re.compile(
-    r"(?i)(?:\b(?:no\s+)?k\s*/\s*c\s*/\s*o\b|\bh\s*/\s*o\b)\s+[^.\n;]+"
+    r"(?i)(?:\b(?:no\s+)?k\s*/\s*c\s*/\s*o\b|\bh\s*/\s*o\b)\s+[^.,\n;|]+"
 )
 
 # C/O complaint vs C/O relative (never match inside K/C/O)
@@ -53,16 +53,21 @@ _CLINICAL_VALUE_RE = re.compile(
     r"|\b(?:vision|va|pain|gcs)\s*[:=]?\s*\d{1,2}/\d{1,2}\b"
     r"|\b(?:20/20|15/15|120/80)\b"
     r"|\b(?:SNOMED|ICD-?10|LOINC)\s*[:#-]?\s*[A-Z0-9.-]+\b"
-    r"|\b(?:Lot|Batch|Serial)\s*[#:-]?\s*[A-Z0-9-]{6,16}\b"
+    r"|\b(?:Lot|Batch|Serial)(?:\s+No\.?)?\s*[#:-]?\s*[A-Z0-9-]{6,16}\b"
     r"|\b[A-TV-Z]\d{2}(?:\.\d{1,2})?\b"  # ICD-10 like E27.1, N39.0, J18.9, B54
     r")"
 )
 
-_ASHA_RE = re.compile(r"(?i)\bASHA\s+(?:worker|didi|behen|supervisor)\b|\breferred\s+by\s+ASHA\b")
+_ASHA_RE = re.compile(r"(?i)\bASHA\s+(?:workers?|didi|behen|supervisor)\b|\breferred\s+by\s+ASHA\b")
+
+_HOSPITAL_NAME_RE = re.compile(
+    r"(?u)(?:[A-Z\u0900-\u097f][\w.\u0900-\u097f'-]{1,24}[ \t]+){1,5}"
+    r"(?:Hospital|Clinic|Diagnostics|Medical[ \t]+College|Nursing[ \t]+Home|Chikitsalaya|अस्पताल|चिकित्सालय|क्लिनिक)\b"
+)
 
 _EPONYM_SUFFIX_RE = re.compile(
     r"(?i)\b([A-Za-z][A-Za-z'-]+(?:'s|s')?)\s+"
-    r"(?:disease|syndrome|procedure|lymphoma|sign|triad|phenomenon|test|score|scale|palsy|reflex|nodes?|tumor|tumour|lactate|catheter|tube|tendon|fracture|ulcer|angina|repair|triad|cirrhosis|ataxia)\b"
+    r"(?:disease|syndrome|procedure|lymphoma|sign|triad|phenomenon|test|score|scale|palsy|reflex|nodes?|tumor|tumour|lactate|catheter|tube|tendon|fracture|ulcer|angina|repair|triad|cirrhosis|ataxia|cases?|patients?)\b"
 )
 
 _DEPARTMENTS = frozenset({
@@ -144,10 +149,16 @@ class MedicalGuard:
             self.eponyms | self.drugs | self.abbreviations | self.clinical_words
         )
         geo = cfg.indian_geo if cfg else {}
-        self.geo_words: set[str] = (
-            {w.lower() for w in geo.get("states", [])}
-            | {w.lower() for w in geo.get("districts", [])}
-        )
+        self.states: set[str] = {w.lower() for w in geo.get("states", [])}
+        self.districts: set[str] = {w.lower() for w in geo.get("districts", [])}
+        self.geo_words: set[str] = self.states | self.districts
+        if self.districts:
+            ordered_dist = sorted(self.districts, key=lambda x: (-len(x), x))
+            self._district_rx: re.Pattern[str] | None = re.compile(
+                r"(?i)(?<![A-Za-z])(?:" + "|".join(re.escape(d) for d in ordered_dist) + r")(?![A-Za-z])"
+            )
+        else:
+            self._district_rx = None
         # Precompile multi-word eponym + drug regex for fast span protection
         multi_eponyms = sorted({p for p in self.eponym_phrases if " " in p or "'" in p}, key=lambda x: -len(x))
         if multi_eponyms:
@@ -207,9 +218,12 @@ class MedicalGuard:
         for m in _CLINICAL_VALUE_RE.finditer(norm):
             spans.append(m.span())
 
-        # 6. ASHA worker
+        # 6. ASHA worker & Hospital / Clinic / Diagnostics facility names
         for m in _ASHA_RE.finditer(norm):
             spans.append(m.span())
+        if not is_address_field:
+            for m in _HOSPITAL_NAME_RE.finditer(norm):
+                spans.append(m.span())
 
         # 7. Eponyms (gazetteer multi-word + suffix regex)
         if self._multi_ep_rx is not None:

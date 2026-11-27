@@ -58,9 +58,9 @@ def verhoeff_valid(digits: str) -> bool:
 _ABHA_NUM_RE = re.compile(r"(?:(?<=^)|(?<=[\s:=(,\"'\[\]]))(?<!\d)(?:91[\s-]?)?\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
 _ABHA_ADDR_RE = re.compile(r"\b[\w.+-]+@(?:abdm|ndhm|sbx)\b", re.I)
 _UPI_RE = re.compile(r"\b[\w.+-]+@(?:upi|okicici|okaxis|oksbi|okhdfcbank|ybl|paytm|ibl|axl|sbi|icici|hdfcbank)\b", re.I)
-_AADHAAR_RE = re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)")
-_AADHAAR_LABELED_RE = re.compile(r"(?iu)(?:aadhaar|aadhar|uid|आधार)\s*(?:no\.?|number|सं\.?)?\s*[:=#-]?\s*(\d{4}[\s-]?\d{4}[\s-]?\d{4})")
-_AADHAAR_MASKED_RE = re.compile(r"\b[X*x]{4}[\s-]?[X*x]{4}[\s-]?\d{4}\b")
+_AADHAAR_RE = re.compile(r"(?<![\d.])\d{4}[\s.-]?\d{4}[\s.-]?\d{4}(?!\d)")
+_AADHAAR_LABELED_RE = re.compile(r"(?iu)(?:aadhaar|aadhar|uid|आधार)\s*(?:no\.?|number|सं\.?)?\s*[:=#-]?\s*(\d{4}[\s.-]?\d{4}[\s.-]?\d{4})")
+_AADHAAR_MASKED_RE = re.compile(r"\b[X*x]{4}[\s.-]?[X*x]{4}[\s.-]?\d{4}\b")
 _PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
 _EPIC_RE = re.compile(r"\b[A-Z]{3}\d{7}\b")
 _DL_RE = re.compile(r"\b[A-Z]{2}\d{2}[-\s]?(?:19|20)\d{2}\d{7}\b")
@@ -71,30 +71,35 @@ _VEHICLE_RE = re.compile(r"\b[A-Z]{2}[-\s]?\d{1,2}[-\s]?[A-Z]{1,3}[-\s]?\d{4}\b"
 _EMAIL_RE = re.compile(r"(?<![\w.+-])(?:mailto:)?([\w.+-]+@[\w-]+(?:\.[\w.-]+)+)", re.I)
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"'()]+", re.I)
 _IP_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b")
-_INSURANCE_RE = re.compile(r"\b(?:PMJAY-[A-Z]{2}-\d{6,14}|POL/\d{2,4}/\d{5,12})\b")
+_INSURANCE_RE = re.compile(r"\b(?:ABPMJAY/[A-Z0-9]{2,8}/\d{2,4}/\d{5,14}|PMJAY-[A-Z]{2}-\d{6,14}|POL/\d{2,4}/\d{5,12})\b")
 
-# Phones: +91/0 mobile, STD landline, tel: URI, anchored phone
+# Phones: +91/0091/0 mobile, STD landline, (xxx) xxx-xxxx, tel: URI, anchored phone
 _TEL_URI_RE = re.compile(r"(?i)\btel:([+\d][\d\s.-]{6,15}\d)")
 _PHONE_10_RE = re.compile(
-    r"(?<![\d/.-])(?:\+?91[\s.-]?|0)?([6-9]\d{4}[\s.-]?\d{5}|[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4})(?![\d/-]|\.\d)"
+    r"(?<![\d/.-])(?:\+?91[\s.-]?|0091[\s.-]?|0)?([6-9]\d{4}[\s.-]?\d{5}|[6-9]\d{2}[\s.-]?\d{3}[\s.-]?\d{4}|[6-9]\d{3}[\s.-]?\d{6}|[6-9]\d[\s.-]\d{4}[\s.-]\d{4})(?![\d/-]|\.\d)"
 )
-_STD_LANDLINE_RE = re.compile(r"(?<![\d/.-])(0\d{2,4}[-\s]\d{6,8})(?![\d/.-])")
+_STD_LANDLINE_RE = re.compile(r"(?<![\d/.-])(0\d{2,5}[-\s]\d{5,8})(?![\d/.-])")
+_PAREN_PHONE_RE = re.compile(r"(?<![\d/.-])(\(\d{3}\)\s*\d{3}[-\s]\d{4})(?![\d/-])")
 _PHONE_ANCHORED_RE = re.compile(
-    r"(?iu)(?:mob(?:ile)?|phone|ph|tel|call(?:\s+karo)?|callback|contact|sampark|मोबाइल|फ़ोन|फोन|संपर्क)\s*[:.#-]?\s*"
-    r"((?:\+?91[\s.-]?|0)?\d[\d\s.-]{6,13}\d)"
+    r"(?iu)(?:mob(?:ile)?|phone|ph|tel|whatsapp|call(?:\s+karo)?|callback|contact|sampark|dooraabhash|doorbhash|मोबाइल|फ़ोन|फोन|संपर्क)\s*[:.#-]?\s*"
+    r"((?:\+?91[\s.-]?|0091[\s.-]?|0)?(?:\(\d{3}\)\s*\d{3}[-\s]\d{4}|\d[\d\s.-]{6,14}\d))"
 )
 _PHONE_MASKED_RE = re.compile(r"\b\d{2}[X*x]{4,6}\d{2,4}\b")
 
-# MRN / UHID / IPD / ADM IDs
+# MRN / UHID / IPD / ADM IDs (general hospital prefix + delimiter/digit formats)
 _MRN_EXPLICIT_RE = re.compile(
-    r"\b(?:SNJ/\d{2}/\d{4,8}|JJH-\d{5,9}|DHH\d{4}-\d{4,8}|DHH-IPD-\d{4,8}|"
-    r"UHID-\d{4,8}|IPD-\d{4}-\d{4,8}|IP/\d{2}/\d{4,8}|ADM\d{5,9}|"
-    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|[A-Z]{3,6}-[A-Z0-9]{2,10}-\d{2,8})\b",
+    r"(?<![A-Za-z0-9])(?:SNJ/\d{2}/\d{4,8}|JJH-\d{5,9}|DHH\d{4}-\d{4,8}|DHH-IPD-\d{4,8}|"
+    r"UHID-\d{4,8}|IPD[-/]\d{2,4}[-/]\d{4,8}|IP/\d{2}/\d{4,8}|ADM-?\d{2,9}(?:-\d{3,8})?|"
+    r"MRN[-/]\d{4,10}|PID[-/]\d{4,10}|[A-Z]{2,6}\d{2,4}[-/][A-Z]{1,6}[-/]\d{4,8}|"
+    r"[A-Z]{2,6}\d{2,4}[-/]\d{4,8}|"
+    r"[A-Z]{2,6}(?:[-/.][A-Z0-9]{1,8}){1,3}[-/.]\d{4,8}|"
+    r"[A-Z]{3,6}-[A-Z0-9]{2,10}-\d{2,8}|"
+    r"[A-Z]{2,4}-\d{5,9}|[A-Z]{2,4}\d{7,10})(?![A-Za-z0-9])",
     re.I,
 )
 _MRN_LABELED_RE = re.compile(
-    r"(?iu)(?:uhid|mrn|ipd(?:\s*no\.?)?|opd(?:\s*no\.?)?|reg(?:\.|istration)?\s*no\.?|policy\s*no\.?|patient[_\s]*(?:id|ref)|"
-    r"hospital[_\s]*uhid|पंजीकरण\s*सं\.?|आईपीडी\s*सं\.?)\s*[:=#-]?\s*([A-Z0-9][A-Z0-9/_-]{4,20})"
+    r"(?iu)(?:uhid|mrn|ipd(?:\s*no\.?)?|opd(?:\s*no\.?)?|reg(?:\.|istration)?\s*(?:no\.?|code)?|policy\s*no\.?|patient[_\s]*(?:id|ref)|"
+    r"hospital[_\s]*uhid|ref(?:\s*no\.?)?|पंजीकरण\s*(?:सं\.?|क्रमांक)|आईपीडी\s*सं\.?)\s*[:=#-]?\s*([A-Z0-9][A-Z0-9/._-]{4,22})"
 )
 
 # Address components (EN + HI + Hinglish)
@@ -106,8 +111,15 @@ _HOUSE_RE = re.compile(
 )
 _LOCALITY_RE = re.compile(
     r"(?iu)(?:"
-    r"(?:Mohalla|मोहल्ला|Colony|कॉलोनी|Nagar|Sector|Basti|Gali|Street|Road|Niwasi|निवासी)\s+[^,\n;|]{2,40}"
+    r"(?:Mohalla|मोहल्ला|Colony|कॉलोनी|Nagar|Basti|Gali|Street|Road|Niwasi|निवासी)\s+[^,\n;|]{2,40}"
+    r"|(?:Sector|सेक्टर|Block|ब्लॉक|Phase|फेज|Plot|प्लॉट)\s*[A-Za-z0-9\u0900-\u097f/-]{1,25}"
+    r"|(?<![\w\u0900-\u097f])(?:[A-Z\u0900-\u097f][\w\u0900-\u097f.'-]{1,22}[ \t]+){1,3}"
+    r"(?:Colony|Nagar|Chowk|Chawk|Bazar|Bazaar|Vihar|Enclave|Peth|Lane|Road|Street|Marg|Tola|Toli|Basti|"
+    r"Para|Pally|Nivas|Kunj|Puram|Pura|Park|Layout|Extension|Extn|Camp|"
+    r"कॉलोनी|नगर|चौक|बाज़ार|बाजार|विहार|पेठ|लेन|रोड|मार्ग|टोला|टोली|मोहल्ला|कैंप|बस्ती)(?![\w\u0900-\u097f])"
+    r"(?:[ \t]+\d{1,4}[A-Za-z]?)?"
     r"|\bWard\s+\d+(?:\s*\([^)]+\))?"
+    r"|वार्ड\s+\d+(?:\s*\([^)]+\))?"
     r")"
 )
 _LANDMARK_RE = re.compile(
@@ -242,6 +254,11 @@ def detect_regex_pii(
         if _is_valid_indian_phone(m.group(1)):
             _add(m.start(1), m.end(1), "PHONE", _digits_only(m.group(1)), 82, ignore_protected=False)
 
+    for m in _PAREN_PHONE_RE.finditer(norm):
+        digs = _digits_only(m.group(1))
+        if len(digs) == 10:
+            _add(m.start(1), m.end(1), "PHONE", digs, 84, ignore_protected=False)
+
     for m in _PHONE_MASKED_RE.finditer(norm):
         _add(m.start(), m.end(), "PHONE", m.group(0), 80)
 
@@ -260,12 +277,18 @@ def detect_regex_pii(
         _add(m.start(), m.end(), "HOUSE", m.group(0), 75, ignore_protected=is_address_field)
 
     for m in _LOCALITY_RE.finditer(norm):
+        s, e = m.start(), m.end()
         seg = m.group(0)
-        if seg.lower().startswith("ward"):
-            ctx = norm[max(0, m.start() - 40):min(len(norm), m.end() + 60)].lower()
-            if not is_address_field and not re.search(r"\b(?:h\.?\s*no|makan|mohalla|near|opp|tehsil|distt|vill|gram|address|c/o)\b", ctx):
+        m_lead = re.match(r"(?iu)^(?:near|opp\.?|opposite|behind|beside|at|in|of|address|पता)\s+", seg)
+        if m_lead:
+            s += m_lead.end()
+            seg = norm[s:e]
+        if seg.lower().startswith("ward") or seg.startswith("वार्ड"):
+            ctx = norm[max(0, s - 40):min(len(norm), e + 60)].lower()
+            if not is_address_field and not re.search(r"(?:h\.?\s*no|makan|mohalla|near|opp|tehsil|distt|vill|gram|address|c/o|मकान|मोहल्ला|पता|ग्राम|तहसील|ज़िला|जिला)", ctx):
                 continue
-        _add(m.start(), m.end(), "LOCALITY", seg.strip(), 70, ignore_protected=is_address_field)
+        if len(seg.strip()) >= 3:
+            _add(s, e, "LOCALITY", seg.strip(), 70, ignore_protected=is_address_field)
 
     for m in _LANDMARK_RE.finditer(norm):
         seg_low = m.group(0).lower()
@@ -275,19 +298,19 @@ def detect_regex_pii(
 
     for m in _VILLAGE_RE.finditer(norm):
         val = m.group(1).strip()
-        val = re.split(r"(?i)\s+(?:Tehsil|Distt|District|तहसील|जिला)\b", val)[0].strip(" ,.")
+        val = re.split(r"(?i)\s+(?:Tehsil|Distt|District|तहसील|ज़िला|जिला)\b", val)[0].strip(" ,.")
         if val:
             _add(m.start(1), m.start(1) + len(val), "VILLAGE", val, 72, ignore_protected=is_address_field)
 
     for m in _TEHSIL_RE.finditer(norm):
         val = m.group(1).strip(" ,.")
-        val = re.split(r"(?i)\s+(?:Distt|District|जिला)\b", val)[0].strip(" ,.")
+        val = re.split(r"(?i)\s+(?:Distt|District|ज़िला|जिला)\b", val)[0].strip(" ,.")
         if val:
             _add(m.start(1), m.start(1) + len(val), "TEHSIL", val, 65, ignore_protected=is_address_field)
 
     for m in _PIN_RE.finditer(norm):
         ctx = norm[max(0, m.start() - 60):min(len(norm), m.end() + 30)].lower()
-        if is_address_field or re.search(r"(?:pin|zip|distt|district|tehsil|vill|gram|address|पता|जिला|-\s*$)", ctx) or re.search(r"-\s*" + m.group(1), norm[max(0, m.start() - 5):m.end()]):
+        if is_address_field or re.search(r"(?:pin|zip|distt|district|tehsil|vill|gram|address|पता|ज़िला|जिला|-\s*$)", ctx) or re.search(r"-\s*" + m.group(1), norm[max(0, m.start() - 5):m.end()]):
             if not re.search(r"\b(?:platelet|wbc|/ul|range|amount|inr|rs)\b", ctx):
                 _add(m.start(1), m.end(1), "PIN", m.group(1), 70, ignore_protected=is_address_field)
 

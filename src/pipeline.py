@@ -12,7 +12,7 @@ from src.crypto import sha256_bytes
 from src.ingest.csv_handler import parse_csv_file, sanitize_csv_file
 from src.ingest.fhir_handler import parse_fhir_bundle, sanitize_fhir_bundle
 from src.ingest.json_handler import parse_json_file, sanitize_json_file
-from src.ingest.router import check_magic_bytes, decode_safe, detect_file_type, sanitize_rel_output_path
+from src.ingest.router import check_magic_bytes, decode_safe, detect_csv_delimiter, detect_file_type, sanitize_rel_output_path
 from src.ingest.text_handler import parse_text_file, sanitize_text_file
 from src.linkage.cluster import link_and_assign_clusters
 from src.models import FileEntry, PatientRecord, RunStats
@@ -57,7 +57,8 @@ def run_pipeline(input_dir: Path, output_dir: Path, cfg: RuntimeConfig | None = 
                 raise ValueError("undecodable_text")
             ftype = detect_file_type(rel, text)
             if ftype in ("csv", "tsv"):
-                fe = parse_csv_file(rel, text, "\t" if ftype == "tsv" else ",", sha, encoding, has_bom)
+                delim = detect_csv_delimiter(text, rel)
+                fe = parse_csv_file(rel, text, delim, sha, encoding, has_bom)
             elif ftype == "fhir":
                 fe = parse_fhir_bundle(rel, text, sha, encoding, has_bom)
             elif ftype == "json":
@@ -110,18 +111,8 @@ def run_pipeline(input_dir: Path, output_dir: Path, cfg: RuntimeConfig | None = 
                     ctoks.add(tok_clean)
         for gn in rec.guardian_names_raw:
             relative_names.add(gn)
-            if ctoks is not None:
-                for tok in normalize_text(gn).split():
-                    tok_clean = tok.strip(".,;:")
-                    if len(tok_clean) >= 3 and not guard.is_medical_or_geo_phrase(tok_clean):
-                        ctoks.add(tok_clean)
         if rec.village:
             villages.add(rec.village)
-            if ctoks is not None:
-                for tok in normalize_text(rec.village).split():
-                    tok_clean = tok.strip(".,;:")
-                    if len(tok_clean) >= 3 and not guard.is_medical_or_geo_phrase(tok_clean):
-                        ctoks.add(tok_clean)
 
     for rec in all_records:
         if rec.cluster_id and rec.cluster_id in cluster_tokens_map:

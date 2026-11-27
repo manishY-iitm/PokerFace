@@ -1,6 +1,8 @@
 """Unified span-merging redactor and inline quasi-identifier anonymizer."""
 from __future__ import annotations
 
+from functools import lru_cache
+
 import regex as re
 
 from src.nlp.date_shifter import shift_date_str
@@ -18,6 +20,11 @@ _AGE_INLINE_RE = re.compile(
 _AGE_PAREN_RE = re.compile(r"\((\d{1,3})\s*([MF])\)")
 _AGE_HINDI_RE = re.compile(r"(?u)(?:आयु|उम्र)\s*[:=-]\s*(\d{1,3})\s*(वर्ष|साल)?")
 _AGE_LABEL_RE = re.compile(r"(?iu)(?:Age(?:\s*/\s*Sex)?)\s*[:=-]\s*(\d{1,3})(?:\s*(?:/\s*([MF]))|\s*(Yrs?|Years?))?")
+
+
+@lru_cache(maxsize=4096)
+def _compile_extra_term_rx(t_norm: str) -> re.Pattern[str]:
+    return re.compile(rf"(?iu)(?<![\w\u0900-\u097f]){re.escape(t_norm)}(?![\w\u0900-\u097f])")
 
 
 def generalize_age_value(age: int, band_width: int = 5, *, high_risk: bool = False) -> str:
@@ -60,11 +67,16 @@ def _replacement_for(
     *,
     patient_pseudonym: str | None = None,
     high_risk: bool = False,
+    geo_generalized: str | None = None,
 ) -> str:
     if kind in ("MRN", "PATIENT_NAME") and patient_pseudonym:
         return patient_pseudonym
     if kind == "PIN":
         return generalize_pin_value(text, high_risk=high_risk)
+    if high_risk and kind in ("VILLAGE", "DISTRICT"):
+        if geo_generalized and geo_generalized.strip().lower() != text.strip().lower():
+            return geo_generalized
+        return f"[{kind}]"
     return f"[{kind}]"
 
 
@@ -83,6 +95,7 @@ def redact_free_text(
     age_band_width: int = 5,
     high_risk: bool = False,
     generalize_inline_age: bool = True,
+    geo_generalized: str | None = None,
 ) -> tuple[str, int]:
     """Normalize, detect PII outside medical guard spans, replace, generalize, and shift dates."""
     norm = normalize_text(text)
@@ -115,6 +128,7 @@ def redact_free_text(
                 age_band_width=age_band_width,
                 high_risk=high_risk,
                 generalize_inline_age=generalize_inline_age,
+                geo_generalized=geo_generalized,
             )
             out_chunks.append(chunk_out)
             total_det += c_det
@@ -142,18 +156,39 @@ def redact_free_text(
 
     # 3. Record-specific extra terms
     if extra_terms:
+        norm_low = norm.lower()
         for term, kind in extra_terms:
             t_norm = normalize_text(term).strip()
-            if len(t_norm) < 3:
+            if len(t_norm) < 3 or t_norm.lower() not in norm_low:
                 continue
             if kind not in ("VILLAGE", "DISTRICT") and guard.is_medical_or_geo_phrase(t_norm):
                 continue
             if kind in ("VILLAGE", "DISTRICT") and not high_risk and guard.is_medical_or_geo_phrase(t_norm):
                 continue
-            rx = re.compile(rf"(?iu)(?<![\w\u0900-\u097f]){re.escape(t_norm)}(?![\w\u0900-\u097f])")
+            rx = _compile_extra_term_rx(t_norm)
             for m in rx.finditer(norm):
                 if not is_in_spans(m.start(), m.end(), protected):
                     matches.append(PiiMatch(m.start(), m.end(), kind, m.group(0), m.group(0), 89))
+
+    # 3b. For high-risk records in address fields, generalize known districts to state/region
+    if high_risk and is_address_field and getattr(guard, "_district_rx", None) is not None:
+        for m in guard._district_rx.finditer(norm):
+            if not is_in_spans(m.start(), m.end(), protected):
+                matches.append(PiiMatch(m.start(), m.end(), "DISTRICT", m.group(0), m.group(0), 87))
+
+    # Upgrade multi-word PATIENT_NAME spans that strictly enclose a shorter PATIENT_NAME match
+    # (prevents partial first-name extra_terms/cluster matches from stranding a trailing surname).
+    for idx, ml in enumerate(matches):
+        if ml.kind != "PATIENT_NAME":
+            continue
+        l_len = ml.end - ml.start
+        best_p = ml.priority
+        for ms in matches:
+            if ms.kind == "PATIENT_NAME" and ms.start >= ml.start and ms.end <= ml.end and (ms.end - ms.start) < l_len:
+                if ms.priority + 1 > best_p:
+                    best_p = ms.priority + 1
+        if best_p > ml.priority:
+            matches[idx] = PiiMatch(ml.start, ml.end, ml.kind, ml.text, ml.norm_value, best_p)
 
     chosen = _merge_matches(matches)
     if chosen:
@@ -166,6 +201,7 @@ def redact_free_text(
                 m.text,
                 patient_pseudonym=patient_pseudonym,
                 high_risk=high_risk,
+                geo_generalized=geo_generalized,
             )
             parts.append(rep)
             cursor = m.end

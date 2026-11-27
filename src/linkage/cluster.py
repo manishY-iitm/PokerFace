@@ -9,7 +9,25 @@ from src.crypto import make_date_shift, make_pseudonym
 from src.linkage.blocking import generate_blocks
 from src.linkage.scorer import DEFAULT_LINK_THRESHOLD, score_pair_detailed
 from src.models import PatientRecord
-from src.nlp.indic_norm import normalize_text
+from src.nlp.indic_norm import normalize_text, strong_name_tokens
+
+
+def _is_weak_identity(rec: PatientRecord) -> bool:
+    """True for sparse notes with only a single given-name token and zero corroborating IDs/demographics."""
+    if (
+        rec.all_mrns
+        or rec.gov_ids
+        or rec.phones
+        or rec.emails
+        or rec.dob is not None
+        or rec.reported_age is not None
+        or rec.gender
+        or rec.pin_code
+        or rec.village
+        or rec.district
+    ):
+        return False
+    return all(len(strong_name_tokens(nm)) < 2 for nm in rec.names_raw)
 
 
 def link_and_assign_clusters(records: list[PatientRecord], cfg: RuntimeConfig) -> None:
@@ -67,9 +85,15 @@ def link_and_assign_clusters(records: list[PatientRecord], cfg: RuntimeConfig) -
                     if res_alt.conflict:
                         weak_ambiguous.add(idx)
                         break
+    weak_ambig_uids = {records[i].record_uid for i in weak_ambiguous}
 
     for _score, i, j in edges:
-        if i in weak_ambiguous or j in weak_ambiguous:
+        if (
+            i in weak_ambiguous
+            or j in weak_ambiguous
+            or _is_weak_identity(records[i])
+            or _is_weak_identity(records[j])
+        ):
             continue
         ri, rj = find(i), find(j)
         if ri == rj:
@@ -127,13 +151,9 @@ def link_and_assign_clusters(records: list[PatientRecord], cfg: RuntimeConfig) -
 
         # Anonymous, weak-singleton, or ambiguous records get pseudonym = None and per-record date shift
         has_id = any(r.names_raw or r.all_mrns or r.phones or r.gov_ids for r in grp)
-        if has_id and len(grp) == 1:
-            r0 = grp[0]
-            if not (r0.all_mrns or r0.gov_ids or r0.phones or r0.dob or r0.reported_age is not None):
-                from src.nlp.indic_norm import strong_name_tokens
-                if all(len(strong_name_tokens(nm)) < 2 for nm in r0.names_raw):
-                    has_id = False
-        is_ambig = len(grp) == 1 and records.index(grp[0]) in weak_ambiguous if len(grp) == 1 else False
+        if has_id and len(grp) == 1 and _is_weak_identity(grp[0]):
+            has_id = False
+        is_ambig = len(grp) == 1 and grp[0].record_uid in weak_ambig_uids if len(grp) == 1 else False
         if not has_id or is_ambig:
             for r in grp:
                 r.cluster_id = None

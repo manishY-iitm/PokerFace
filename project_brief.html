@@ -266,39 +266,39 @@
       <tr>
         <th>Evaluation Dimension</th>
         <th>Practice Dataset (<code>dev/input</code>: 200 files, 816 recs)</th>
-        <th>Red-Team Chaos Suite (500 pts, ~1,915 recs, Unseen Schema)</th>
+        <th>Unseen Hard Pools (<code>H7</code> / <code>H11</code>) &amp; Chaos Suite (<code>pytest</code> / <code>dataset-2</code>)</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td><strong>Personal Data &amp; Canary Leaks</strong></td>
         <td><strong>0 / 3,230 (0.0%)</strong> across EN/HI/Hinglish &amp; all 6 channels; <strong>0 / 4 canaries</strong></td>
-        <td><strong>0 leaks</strong> (canaries, Base64, FHIR <code>text.div</code>/<code>contact</code>/<code>contained</code>, logs)</td>
+        <td><strong>0 / 8,569</strong> (<code>H7</code>) &amp; <strong>0 / 8,760</strong> (<code>H11</code>); <strong>0 / 8 canaries</strong>; strict token leak <strong>0.0</strong></td>
       </tr>
       <tr>
         <td><strong>Adversarial Re-Identification Risk</strong></td>
-        <td>All rare/elderly traps generalized (<code>80+</code>, State/Region)</td>
-        <td>Voter-list Re-ID: <strong>99.6% &rarr; 0.4%</strong>; Known-date hits: <strong>2/150</strong>; Singling-out: <strong>0</strong></td>
+        <td>All rare/elderly outliers generalized (<code>560</code> generalized recs)</td>
+        <td><code>H7</code>/<code>H11</code>: <code>A4</code> <strong>0.0172</strong>, <code>A3</code> <strong>0.03–0.04</strong>, <code>A7</code> <strong>0.0</strong>; <strong>0 / 67</strong> Re-ID (<code>dataset-2</code>)</td>
       </tr>
       <tr>
         <td><strong>Cross-Script Linkage Quality</strong></td>
         <td>Precision <strong>1.00</strong>, Recall <strong>0.95</strong>, F0.5 <strong>0.99</strong>, <strong>0 wrong merges</strong></td>
-        <td><strong>0.0% false merges</strong> (spouses/twins/homonyms separated); <strong>&gt;90%</strong> recall</td>
+        <td><code>H7</code>/<code>H11</code>: P <strong>1.00</strong>, R <strong>0.97</strong>, F0.5 <strong>0.99</strong>, <strong>0</strong> false merges (twins &amp; father-son apart)</td>
       </tr>
       <tr>
         <td><strong>Clinical Utility Preservation</strong></td>
-        <td><strong>4,847 / 4,855 (99.8%)</strong> medical values kept; <strong>100% exact LOS</strong></td>
-        <td><strong>100%</strong> doctors, eponyms, drugs, vitals, <code>H/o HTN</code>, SNOMED, LOS &amp; age bands</td>
+        <td><strong>4,772 / 4,855 (98.3%)</strong> medical values kept; <strong>100% exact LOS</strong></td>
+        <td><code>H7</code>/<code>H11</code>: <strong>97.9% / 97.6%</strong> probes (<code>ctx-prec 1.0</code>); <strong>2,370 / 2,370</strong> (<code>dataset-2</code>)</td>
       </tr>
       <tr>
         <td><strong>Format Integrity &amp; Quarantine</strong></td>
         <td><code>CONTRACT OK</code>; <strong>0</strong> raw copies; <strong>8/8</strong> broken files quarantined</td>
-        <td><code>100%</code> valid CSV/TSV/JSON/FHIR R4; <strong>5/5</strong> trap files quarantined; input untouched</td>
+        <td><code>H7</code> <strong>98.95</strong> &amp; <code>H11</code> <strong>98.81/100</strong>; <strong>0</strong> formula/JSON/name issues; <strong>99.51/100</strong> (<code>dataset-2</code>)</td>
       </tr>
       <tr>
         <td><strong>Determinism, Speed &amp; Memory</strong></td>
-        <td><strong>2.64s</strong>, <strong>41.2 MB</strong> peak RSS; <code>READY TO SUBMIT</code></td>
-        <td><strong>14/14</strong> tests pass in <strong>23.20s</strong> (3 runs + attacker); 100% secret rotation</td>
+        <td><strong>3.4s</strong>, <strong>42.7 MB</strong> peak RSS; <code>READY TO SUBMIT</code></td>
+        <td><strong>14/14</strong> pytest in <strong>24.79s</strong>; <strong>2.84s / 42.0 MB</strong> (<code>dataset-2</code>); 100% secret rotation</td>
       </tr>
     </tbody>
   </table>

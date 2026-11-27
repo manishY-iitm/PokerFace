@@ -1,7 +1,7 @@
 # Project RAKSHA — Team PokerFace
 
 **Yugaantar DevForge · Track 3 ("Secret Wards" Privacy Engineering)**
-Repo: `https://github.com/manishY-iitm/PokerFace` · Brief: [project_brief.html](project_brief.html) / [docs/brief.pdf](docs/brief.pdf)
+Repo: `https://github.com/manishY-iitm/PokerFace` · Brief: [docs/brief.html](docs/brief.html) / [docs/brief.pdf](docs/brief.pdf)
 
 An **offline, CPU-only, deterministic privacy firewall** for heterogeneous Indian healthcare records (CSV, TSV, nested JSON, FHIR R4 Bundles, and English/Hindi/Hinglish clinical notes). It removes direct and hidden-channel PII, resists voter-list re-identification attacks, links patients accurately across scripts without merging twins or spouses, and preserves clinical utility (exact lengths of stay, truthful age bands, diagnoses, medications, and vitals).
 
@@ -101,15 +101,16 @@ Per competition ground rules, we declare **every** library, gazetteer, and algor
 
 ## 4. Measured Benchmarks
 
-| Benchmark | Practice Dataset (`dev/input`, 200 files / 816 records) | Red-Team Chaos Suite (`tests/`, 500 patients / ~1,915 records) |
-|---|---|---|
-| Personal Data Leaked | **`0 / 3,230` (`0.0%`)** (Latin `0.0%`, Deva `0.0%`, Hinglish `0.0%`) | **`0` leaks** across all 500 patients & hidden channels |
-| Canary Leaks | **`0 / 4`** | **`0`** (zero-width, Devanagari digits, Base64, FHIR `text.div`/`contact`/`contained`) |
-| Medical Values Preserved | **`4,847 / 4,855` (`99.8%`)** | **`100%`** doctors, eponyms, drugs, doses, vitals, `H/o HTN`, SNOMED/ICD-10 |
-| Exact LOS & Truthful Age Bands | **`100%` exact LOS** | **`100%` exact LOS**, **`100%` truthful age bands** |
-| Linkage Precision / Recall / False Merges | **`1.00` / `0.95` / `0` false merges** (`F0.5 = 0.99`) | **`0.0%` false merges** (twins/spouses/homonyms separated), `>90%` cross-script recall |
-| Attacker Re-ID Rate (Before → After) | — | **`99.6%` → `0.4%`** (`singling_out_count = 0`) |
-| Runtime & Peak RSS | **`2.64s`**, **`41.2 MB` peak RSS** | **`23.20s`** full 14-test suite (`<60s`, `<500 MB` verified) |
+| Benchmark | Practice Dataset (`dev/input`, 200 files / 816 records) | Unseen Hard Gauntlet (`sets/H7` Pool A / `sets/H11` Held-Out Pool B) | Stress & Red-Team Suites (`pytest` / `dataset-2-test`) |
+|---|---|---|---|
+| Overall Score | `CONTRACT OK` · `READY TO SUBMIT` | **`98.95 / 100`** (`H7`) · **`98.81 / 100`** (`H11`, `-0.0` penalties) | **`99.51 / 100.00`** (`dataset-2-test`, `36/36` matrix `OK`) |
+| Personal Data Leaked | **`0 / 3,230` (`0.0%`)** (Latin `0.0%`, Deva `0.0%`, Hinglish `0.0%`, all 6 channels) | **`0 / 8,569`** (`H7`) · **`0 / 8,760`** (`H11`); **`0.0`** strict token leak rate | **`0 / 3,063`** (`dataset-2-test`) · **`0`** leaks (`tests/`) |
+| Canary Leaks | **`0 / 4`** | **`0 / 8`** (`0` across outputs, stdout/stderr, TMP/HOME) | **`0`** (`dataset-2-test` & `tests/`) |
+| Medical Values Preserved | **`4,772 / 4,855` (`98.3%`)** | **`4,899 / 5,006`** (`H7`) · **`4,950 / 5,070`** (`H11`) (`ctx-precision 1.0`) | **`2,370 / 2,370`** (`dataset-2-test`) · **`100%`** (`tests/`) |
+| Exact LOS & Truthful Age Bands | **`100%` exact LOS** | `LOS 64/64` (`H7`), `76/76` (`H11`); `0 WRONG` age bands | **`100%`** exact LOS & truthful age bands |
+| Linkage Precision / Recall / False Merges | **`1.00` / `0.95` / `0` false merges** (`F0.5 = 0.99`) | **`1.00` / `0.97` / `0` false merges** (`F0.5 = 0.99`, twins & father-son separated) | **`F1 = 0.9671`**, **`0`** homonym merges (`dataset-2-test`) |
+| Adversarial Re-ID Risk | Rare/elderly generalized (`560` generalized records) | `A3 0.0317–0.0402`, **`A4 0.0172`**, `A5 0.0251–0.0352`, `A7 0.0` | **`0 / 67`** Re-ID (`dataset-2-test`) · `99.6% → 0.4%` (`tests/`) |
+| Runtime & Peak RSS | **`3.4s`**, **`42.7 MB` peak RSS** | `27.12s` (`H7`), `42.77s` (`H11`) (3 runs) | **`2.84s` / `42.0 MB`** (`dataset-2-test`) · `14/14` pytest in **`24.79s`** |
 
 ---
 
