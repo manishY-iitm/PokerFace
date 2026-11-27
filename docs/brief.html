@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Poker Face: Offline Privacy Firewall for Multilingual Health Records</title>
+<style>
+@page { size: A4; margin: 8.5mm 9.5mm; }
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+:root {
+  --navy: #162244;
+  --ink: #141a2e;
+  --muted: #46506e;
+  --line: #cfd6e4;
+  --soft: #f4f6fb;
+  --blue: #1976d2;
+  --green: #0a8a38;
+  --amber: #c96f00;
+  --rose: #b82458;
+}
+body {
+  font-family: 'Segoe UI', 'Nirmala UI', Arial, sans-serif;
+  font-size: 10pt;
+  line-height: 1.24;
+  color: var(--ink);
+  margin: 0;
+}
+.hero {
+  background: var(--navy);
+  color: #ffffff;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+}
+.hero h1 {
+  margin: 0;
+  font-size: 14.5pt;
+  line-height: 1.18;
+  letter-spacing: 0.2px;
+}
+.hero h1 span { color: #ffdf4d; }
+.hero .meta {
+  font-size: 10pt;
+  color: #dbe3ff;
+  margin-top: 3px;
+}
+h2 {
+  font-size: 11pt;
+  margin: 7px 0 3px;
+  color: var(--navy);
+  border-bottom: 1.5px solid var(--line);
+  padding-bottom: 1px;
+}
+p { margin: 2px 0 4px; }
+ul { margin: 2px 0 4px 16px; padding: 0; }
+li { margin: 0 0 2px; }
+code {
+  font-family: Consolas, monospace;
+  font-size: 10pt;
+  background: var(--soft);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.card {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-left: 3.5px solid var(--blue);
+  border-radius: 4px;
+  padding: 5px 7px;
+  margin-bottom: 4px;
+}
+.card.g { border-left-color: var(--green); }
+.card.a { border-left-color: var(--amber); }
+.card.r { border-left-color: var(--rose); }
+.card h3 {
+  margin: 0 0 2px;
+  font-size: 10.2pt;
+  color: var(--navy);
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 10pt;
+  margin: 3px 0 4px;
+}
+th, td {
+  padding: 2.5px 5px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+th:first-child, td:first-child { text-align: left; }
+thead th {
+  background: var(--navy);
+  color: #ffffff;
+  font-weight: 600;
+}
+tbody tr:nth-child(even) td { background: var(--soft); }
+.note {
+  font-size: 10pt;
+  color: var(--muted);
+}
+.page2 { break-before: page; }
+svg text { font-family: 'Segoe UI', 'Nirmala UI', Arial, sans-serif; }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1><span>Poker Face:</span> Offline Privacy Firewall for Multilingual Health Records</h1>
+  <div class="meta">Track 3, Secret Wards | Team Poker Face: Suyash Krishan Garg, Manish Yadav, Shubh Singh Rajput, Khushi Sarawagi | github.com/Neo-Venom/PokerFace</div>
+</div>
+
+<h2>1. Problem</h2>
+<p>Hospital records mix English, Hindi and Hinglish, with personal data in text, fields, filenames and metadata. Our goal is to remove identities, keep clinical information, and link records without merging different patients. System RAKSHA runs 100% offline, CPU-only, without LLMs, under <code>raksha.toml</code> (<code>python main.py --input {input} --output {output}</code>).</p>
+
+<h2>2. Architecture</h2>
+<svg width="100%" viewBox="0 0 800 98" role="img" aria-label="RAKSHA pipeline matching src/pipeline.py execution order">
+  <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#6b7794"/></marker></defs>
+  <g transform="translate(2,4)">
+    <rect width="150" height="88" rx="5" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+    <rect width="150" height="25" rx="5" fill="#1976d2"/>
+    <text x="75" y="17.5" text-anchor="middle" font-size="15.5" font-weight="700" fill="#fff">1. Ingest</text>
+    <text x="75" y="44" text-anchor="middle" font-size="15" fill="#141a2e">hash · decode</text>
+    <text x="75" y="62" text-anchor="middle" font-size="15" fill="#141a2e">repair · XML/depth</text>
+    <text x="75" y="80" text-anchor="middle" font-size="15" fill="#b82458">quarantine unsafe</text>
+  </g>
+  <line x1="153" y1="48" x2="161" y2="48" stroke="#6b7794" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(163,4)">
+    <rect width="150" height="88" rx="5" fill="#fff" stroke="#b82458" stroke-width="2"/>
+    <rect width="150" height="25" rx="5" fill="#b82458"/>
+    <text x="75" y="17.5" text-anchor="middle" font-size="15.5" font-weight="700" fill="#fff">2. Detect PII</text>
+    <text x="75" y="44" text-anchor="middle" font-size="15" fill="#141a2e">label + values</text>
+    <text x="75" y="62" text-anchor="middle" font-size="15" fill="#141a2e">shield · regex/NER</text>
+    <text x="75" y="80" text-anchor="middle" font-size="15" fill="#141a2e">hidden decode</text>
+  </g>
+  <line x1="314" y1="48" x2="322" y2="48" stroke="#6b7794" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(324,4)">
+    <rect width="150" height="88" rx="5" fill="#fff" stroke="#1976d2" stroke-width="2"/>
+    <rect width="150" height="25" rx="5" fill="#1976d2"/>
+    <text x="75" y="17.5" text-anchor="middle" font-size="15.5" font-weight="700" fill="#fff">3. Link Patients</text>
+    <text x="75" y="44" text-anchor="middle" font-size="15" fill="#141a2e">multi-key block</text>
+    <text x="75" y="62" text-anchor="middle" font-size="15" fill="#141a2e">F-S score · vetoes</text>
+    <text x="75" y="80" text-anchor="middle" font-size="15" fill="#141a2e">HKDF PSN IDs</text>
+  </g>
+  <line x1="475" y1="48" x2="483" y2="48" stroke="#6b7794" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(485,4)">
+    <rect width="150" height="88" rx="5" fill="#fff" stroke="#c96f00" stroke-width="2"/>
+    <rect width="150" height="25" rx="5" fill="#c96f00"/>
+    <text x="75" y="17.5" text-anchor="middle" font-size="15.5" font-weight="700" fill="#fff">4. Privacy</text>
+    <text x="75" y="44" text-anchor="middle" font-size="15" fill="#141a2e">keyed date shift</text>
+    <text x="75" y="62" text-anchor="middle" font-size="15" fill="#141a2e">k-anon · 2k rare</text>
+    <text x="75" y="80" text-anchor="middle" font-size="15" fill="#141a2e">l-div=2 · geo</text>
+  </g>
+  <line x1="636" y1="48" x2="644" y2="48" stroke="#6b7794" stroke-width="2" marker-end="url(#ar)"/>
+  <g transform="translate(646,4)">
+    <rect width="152" height="88" rx="5" fill="#fff" stroke="#0a8a38" stroke-width="2"/>
+    <rect width="152" height="25" rx="5" fill="#0a8a38"/>
+    <text x="76" y="17.5" text-anchor="middle" font-size="15.5" font-weight="700" fill="#fff">5. Audit &amp; Out</text>
+    <text x="76" y="44" text-anchor="middle" font-size="15" fill="#141a2e">rename · rewrite</text>
+    <text x="76" y="62" text-anchor="middle" font-size="15" fill="#141a2e">egress gate</text>
+    <text x="76" y="80" text-anchor="middle" font-size="15" fill="#0a8a38">sanitized + jsonl</text>
+  </g>
+</svg>
+<p class="note">Flow: Input -&gt; format/encoding handling -&gt; PII detection -&gt; patient linking -&gt; privacy transformation -&gt; audit -&gt; <code>sanitized/</code>, <code>report.json</code>, <code>records.jsonl</code> (unprocessable files quarantined in <code>report.json</code>).</p>
+
+<h2>3. Ingestion</h2>
+<p><b>Formats &amp; encodings:</b> Handles <code>.csv</code>, <code>.tsv</code>, <code>.json</code>, <code>.jsonl</code>/<code>.ndjson</code>, FHIR R4 JSON Bundles, <code>.xml</code>, <code>.txt</code>/<code>.md</code>/<code>.log</code>, and JSON mislabelled <code>.csv</code>. Strictly decodes UTF-8, UTF-8-BOM, UTF-16 LE/BE, and <code>cp1252</code>; sparse NUL injections (<code>&lt;=0.5%</code> bytes) convert to spaces instead of dropping whole exports. Ragged CSV rows merge overflow cells cleanly; CSV formula leads (<code>= + - @ \t \r</code>) are prefixed <code>'</code>. <b>Quarantine:</b> Unprocessable or unsafe inputs—PDF/JPEG/PNG/GIF/ZIP/SQLite magic bytes, empty or undecodable files, malformed or <code>NaN</code> JSON, JSON depth <code>&gt;500</code>, XXE/DTD XML failures (<code>defusedxml</code>), unsafe filenames, and text lines <code>&gt;65,536</code> chars—are quarantined in <code>report.json</code> (<code>output: null</code>).</p>
+
+<h2>4. Detection</h2>
+<p><b>No ML model is used.</b> <code>profiler.py</code> infers field roles from two signals: bilingual EN/HI/Hinglish header synonyms and observed cell value shapes. <code>MedicalGuard</code> protects doctors, ASHA/ward terms, doses (<code>1-0-1</code>), labs, ICD-10/LOINC codes, <code>K/C/O</code>, <code>H/O</code>, eponyms (e.g., <code>Parkinson's</code>), and a lexicon learned at runtime from clean docs and clinical fields. <code>pii_regex.py</code> and <code>pii_ner.py</code> detect ABHA, PAN, Aadhaar, multi-format phones, shape-based MRN/UHID, UPI/gov IDs, EN/Devanagari/Hinglish names, <code>S/o</code>/<code>D/o</code>/<code>W/o</code>/<code>C/O &lt;name&gt;</code> relatives (separating <code>C/O &lt;complaint&gt;</code>), and fail-closed non-district addresses, then sweep all harvested tokens corpus-wide. <code>hidden.py</code> recursively decodes <code>%XX</code>, HTML entities, <code>\uXXXX</code>, homoglyphs, zero-width/BiDi chars, hex, Base64, and bounded (8 MiB, depth 4) gzip+Base64.</p>
+
+<h2>5. Linking and pseudonyms</h2>
+<p><b>Signals &amp; rules:</b> Multi-key blocking pairs records via UHID/core IDs, gov IDs, phones, emails, names, relatives, DOB/birth year, village, and district. IDF-weighted Fellegi–Sunter scoring (<code>threshold 7.5</code>) compares Latin and ITRANS-romanized Devanagari using Jaro–Winkler and vowel/aspiration-folded consonant keys. <b>Vetoes &amp; abstention:</b> Hard vetoes block merges across conflicting Aadhaar/ABHA/PAN/last-4, sex, age/DOB, same-system non-episode MRNs, twins/father-son, shared attendant phones without matching people, and multi-patient tables. Weak records require margin <code>&gt;=2.5</code> and coincidence <code>&lt;=0.25</code>; ambiguous or multi-patient records stay <code>patient: null</code>. Linked clusters get keyed <code>HKDF-SHA256</code> + <code>HMAC-SHA256</code> pseudonyms (<code>PSN-XXXXXXXX</code>).</p>
+
+<h2>6. What distinguishes our design</h2>
+<div class="cols">
+  <div class="card g"><h3>Dual-signal schema agnosticism</h3><p>Columns and JSON keys classify from both header/key labels and cell shapes, surviving renamed headers (<code>holder</code>, <code>abode</code>) and mixed-language dumps with zero hardcoded test IDs.</p></div>
+  <div class="card g"><h3>Cross-script identity with vetoes &amp; egress gate</h3><p>Links Devanagari/Latin/Hinglish mentions while blocking parent-child/twin false merges via hard vetoes and <code>null</code> abstention, then re-audits outputs, filenames and decoded payloads before exit.</p></div>
+</div>
+
+<div class="page2"></div>
+
+<h2>7. Privacy and utility</h2>
+<p><b>Transformations (<code>config/policy.yaml</code>, <code>kanon.py</code>, <code>date_shifter.py</code>):</b> Each patient cluster gets a keyed HMAC shift (<code>±30–180</code> days, dodging DOBs) that keeps exact lengths of stay and visit gaps across all date formats. Exact DOBs become cohort ranges (or are omitted in FHIR <code>Patient</code>). Distinct patient clusters generalize along a truthful age-band ladder (<code>5y -&gt; 10y -&gt; 20y -&gt; 0-17/18-59/60+ -&gt; 0-17/18-120</code>, <code>85+</code> top-code). Patients with rare diagnoses (<code>&lt;4</code> clusters, excluding complaint durations) require <b>stricter <code>2k</code> (10) patients</b> plus <code>l_diversity = 2</code> distinct primary conditions (<b>not</b> ICD rollup). Districts stay; villages/houses/landmarks are scrubbed; tehsils and 3-digit PIN prefixes release only if cohort size suffices. <i>Choice &amp; cost:</i> stronger generalization reduces linkage risk (A3/A4) but removes age/sub-district detail, while keeping exact stays and raw diagnoses preserves research utility at higher known-fact attack exposure (A5).</p>
+
+<h2>8. Security</h2>
+<p><b>Implemented controls:</b> <code>KeyRing.from_env</code> derives HKDF subkeys (<code>pseudonym</code>, <code>date-shift</code>, <code>file-name</code>, <code>vault</code>), pops <code>RAKSHA_SECRET</code> from <code>os.environ</code>, and zeroes keys on exit. Logs suppress tracebacks (<code>FATAL: &lt;ExcType&gt;</code>), <code>--input</code> is untouched, and no temp files are written. <code>encrypt_quarantine_archive</code> defaults to <b><code>false</code></b>: released <code>sanitized/</code>, <code>report.json</code>, and <code>records.jsonl</code> are plaintext UTF-8 (no quarantine blobs stored by default); when enabled, <code>EncryptedVault</code> seals quarantined raw files to <code>quarantine/&lt;rel_input_path&gt;.enc</code> with AES-256-GCM (12B nonce, SHA-256 AAD). <b>Disclosed security &amp; audit gaps:</b> (1) empty/missing <code>RAKSHA_SECRET</code> falls back to a fixed key instead of failing closed; (2) <code>audit.py</code> calls unbounded <code>gzip.decompress</code> and <code>fhir_handler.py</code> calls uncapped <code>b64decode</code>; (3) audit skips secrets <code>&lt;4</code> chars, omits URL-safe <code>-_</code> Base64 in <code>_B64_RE</code>, only checks secrets on <code>is_clean_doc</code> files, and only forces quarantine on 6 critical ID types (leaving MRN/phone/PIN/names to best-effort re-scrubbing); (4) <code>main.py</code> re-execs <code>-X utf8</code> before env scrub; (5) FHIR sanitization is structural, not a full R4 validator.</p>
+
+<h2>9. Self-test results, not official scores</h2>
+<p class="note">Verified on commit <code>aea3847</code> (unchanged runtime pipeline code, config and data). All listed datasets are self-test or debugging runs, <b>not</b> official unseen scores. Unit tests: <b>60 passed</b> in WSL2 Linux (<code>pytest</code> 1.03s / <code>unittest</code> 0.72s); <b>59 passed, 1 skipped</b> on Windows (locale test skipped). Practice <code>check_submission.py --run</code> passed (determinism &amp; secret rotation clean); official holdout is <b>not measured</b>.</p>
+<table>
+  <thead>
+    <tr><th>Self-test / debugging run (aea3847)</th><th>PII leaked</th><th>Canaries</th><th>Medical kept</th><th>Linking recall</th><th>Wrong merges</th><th>Runtime / Peak RSS</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><b>Practice</b> (LF, WSL2 offline 2-CPU, verified on HEAD)</td><td>0 / 3,230</td><td>0 / 4</td><td>4,855 / 4,855</td><td>1.00 (F0.5 1.00)</td><td>0</td><td>11.08s wall (10.73s report) · 69.99 MiB</td></tr>
+    <tr><td><b>Synthetic set</b> (debugging, Windows)</td><td>45 / 42,866</td><td>1 / 6</td><td>45,862 / 45,883</td><td>0.817 (F0.5 0.96)</td><td>1 cluster</td><td>119.38s · 413.97 MB</td></tr>
+    <tr><td><b>Stress set</b> (debugging, Windows)</td><td>15 / 811</td><td>2 / 4</td><td>185 / 200</td><td>0.54 (F0.5 0.85)</td><td>0</td><td>1.58s · 44.3 MB</td></tr>
+  </tbody>
+</table>
+<p><b>Additional verified checks (<code>aea3847</code>):</b> Stress-set local score: <code>76.97 / 100</code>. Gauntlet debugging local scores (A7/B11/H7/H11, Windows): <code>99.70–99.76 / 100</code>. Practice attack simulation (<code>aea3847</code>): <code>A3 1.9%</code>, <code>A4 2.1%</code>, <code>A5 58.3%</code>. Machine: Intel Core i5-10400H (WSL2 Linux 2 pinned CPUs via <code>taskset -c 0,1</code> + <code>unshare -rn</code>, Python 3.14.4; earlier Windows baseline on same host: ~11.7–12.0s, 61.68 MB RSS).</p>
+
+<h2>10. Models and dependencies</h2>
+<p><b>No ML model is used</b> (0 LLMs, 0 neural/CRF weights). Seven offline CPU libraries in <code>requirements.txt</code>: <code>regex</code>, <code>rapidfuzz</code>, <code>jellyfish</code>, <code>indic-transliteration</code>, <code>cryptography</code>, <code>defusedxml</code>, <code>pyyaml</code>, plus static clinical/name/district/ICD-title tables in <code>data/</code> (no truth keys). Optional demo server <code>ui/</code> uses stdlib only.</p>
+
+<h2>11. Verified known limitations</h2>
+<ul>
+  <li>Unfamiliar ID prefixes, encoded text and canaries can leak (e.g., Synthetic <code>CAN06 bp-456178</code>; Stress direct IDs).</li>
+  <li>Shared doctor and patient names can cause leaks when clinical spans shield an overlapping patient name.</li>
+  <li>Shifted CSV rows can cause leaks, lost data or wrong merges (<code>PSN-2YP7Y1PK</code> in synthetic debugging).</li>
+  <li>Hindi durations can be mistaken for ages during inline rewriting; non-Devanagari Indic scripts lack transliteration.</li>
+  <li>Some valid files are quarantined by strict limits (depth &gt;500, lines &gt;64 KiB, strict filename characters).</li>
+  <li>Some linked records lack the pseudonym inside the sanitized text/record (9,713 / 9,829 consistency on Synthetic).</li>
+  <li>Known-fact attacks remain a significant risk (Practice attack simulation <code>A5 58.3%</code>; rare diagnoses keep exact stays).</li>
+  <li>Zero leakage on unseen data is not guaranteed.</li>
+</ul>
+
+</body>
+</html>

@@ -1,7 +1,7 @@
 # Project RAKSHA — Team PokerFace
 
 **Yugaantar DevForge · Track 3 ("Secret Wards" Privacy Engineering)**
-Repo: `https://github.com/manishY-iitm/PokerFace` · Brief: [project_brief.html](project_brief.html) / [docs/brief.pdf](docs/brief.pdf)
+Repo: `https://github.com/manishY-iitm/PokerFace` · Brief: [docs/brief.html](docs/brief.html) / [docs/brief.pdf](docs/brief.pdf)
 
 An **offline, CPU-only, deterministic privacy firewall** for heterogeneous Indian healthcare records (CSV, TSV, nested JSON, FHIR R4 Bundles, and English/Hindi/Hinglish clinical notes). It removes direct and hidden-channel PII, resists voter-list re-identification attacks, links patients accurately across scripts without merging twins or spouses, and preserves clinical utility (exact lengths of stay, truthful age bands, diagnoses, medications, and vitals).
 
